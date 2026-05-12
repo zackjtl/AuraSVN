@@ -244,6 +244,7 @@ Future<ProjectReportResult> _generateProjectReportStream({
       'repo': repository.name,
       'notes_root': settings.notesRootPath,
       'ollama_base_url': settings.ollamaBaseUrl,
+      'ollama_api_key': settings.ollamaApiKey,
       'model': settings.ollamaModel,
       'report_title': reportTitle,
       'user_prompt': userPrompt,

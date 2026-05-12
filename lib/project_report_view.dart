@@ -475,6 +475,7 @@ class _ProjectReportConsoleSheetState
   late final bool _ownsPromptController;
   final _logs = <ProjectReportLogEntry>[];
   bool _isRunning = false;
+  bool _isCancelled = false;
   bool _hasStarted = false;
   String? _error;
   ProjectReportResult? _result;
@@ -503,10 +504,22 @@ class _ProjectReportConsoleSheetState
     super.dispose();
   }
 
+  void _cancel() {
+    if (!_isRunning) {
+      return;
+    }
+    setState(() {
+      _isCancelled = true;
+      _isRunning = false;
+    });
+    _addLogText('已取消分析', level: 'warn');
+  }
+
   Future<void> _run() async {
     if (_isRunning) {
       return;
     }
+    _isCancelled = false;
     final reportTitle = _titleController.text.trim();
     final userPrompt = _promptController.text.trim();
     setState(() {
@@ -531,7 +544,7 @@ class _ProjectReportConsoleSheetState
         userPrompt: userPrompt,
         onLog: _addLog,
       );
-      if (!mounted) {
+      if (!mounted || _isCancelled) {
         return;
       }
       setState(() {
@@ -544,7 +557,7 @@ class _ProjectReportConsoleSheetState
         }
       });
     } catch (error) {
-      if (!mounted) {
+      if (!mounted || _isCancelled) {
         return;
       }
       _addLogText('專案級報告失敗：$error', level: 'error');
@@ -685,7 +698,7 @@ class _ProjectReportConsoleSheetState
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               FilledButton.icon(
-                onPressed: _isRunning ? null : _run,
+                onPressed: _isRunning ? _cancel : _run,
                 icon: _isRunning
                     ? const SizedBox(
                         width: 16,
@@ -695,7 +708,9 @@ class _ProjectReportConsoleSheetState
                     : const Icon(Icons.play_arrow_rounded),
                 label: Text(_result == null
                     ? _t(context, '開始分析', 'Start Analysis')
-                    : _t(context, '重新分析', 'Analyze Again')),
+                    : _isRunning
+                        ? _t(context, '取消', 'Cancel')
+                        : _t(context, '重新分析', 'Analyze Again')),
               ),
               Text(
                 _t(
@@ -1042,7 +1057,7 @@ class _ReportContentState extends State<_ReportContent> {
                   FilledButton.icon(
                     onPressed: _saveReport,
                     icon: const Icon(Icons.save_rounded),
-                    label: Text(_t(context, '重新儲存', 'Save Again')),
+                    label: Text(_t(context, '另存新檔', 'Save As')),
                   ),
                   OutlinedButton.icon(
                     onPressed: _showInFileExplorer,
