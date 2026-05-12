@@ -1,0 +1,13 @@
+{
+  "svn_url": "https://svn1.embestor.local/svn/ET1288_AP",
+  "username": "",
+  "password": "",
+  "output_dir": "svn_ai_output",
+  "svn_executable": "C:\\Program Files\\TortoiseSVN\\bin\\svn.exe",
+  "extra_svn_args": [
+    "--non-interactive",
+    "--trust-server-cert-failures=unknown-ca,cn-mismatch,expired,not-yet-valid,other"
+  ],
+  "ticket_regex": "([A-Z][A-Z0-9]+-\\d+|[A-Z]{2,}\\d{3,}|#\\d+)",
+  "start_revision": 1
+}
