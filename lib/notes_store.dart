@@ -1,4 +1,31 @@
-part of 'main.dart';
+import 'dart:convert';
+import 'dart:io';
+
+import 'models.dart';
+import 'utils.dart';
+
+export 'models.dart' show BranchNoteDocument, ProjectReportResult, ProjectReportLogEntry, RevisionDiffResult;
+
+const _defaultRepositories = [
+  SvnRepository('ET1288_AP', 'https://svn1.embestor.local/svn/ET1288_AP'),
+  SvnRepository('ET1289_AP', 'https://svn1.embestor.local/svn/ET1289_AP'),
+  SvnRepository('ET1290_AP', 'https://svn1.embestor.local/svn/ET1290_AP'),
+];
+
+String _defaultSvnCommand() {
+  if (Platform.isWindows) {
+    return r'C:\Program Files\TortoiseSVN\bin\svn.exe';
+  }
+  return 'svn';
+}
+
+String _defaultSvnParameters() {
+  return '--non-interactive --trust-server-cert-failures=unknown-ca,cn-mismatch,expired,not-yet-valid,other';
+}
+
+String _defaultPythonCommand() {
+  return Platform.isWindows ? 'py -3.14' : 'python3';
+}
 
 class AppSettings {
   const AppSettings({
@@ -99,22 +126,6 @@ String _normalizeLanguageCode(String? value) {
 
 String _normalizeAppearanceThemeCode(String? value) {
   return value == 'day' ? 'day' : 'night';
-}
-
-class BranchNoteDocument {
-  const BranchNoteDocument({
-    required this.repoName,
-    required this.branchPath,
-    required this.noteFile,
-    required this.content,
-    this.updatedAt,
-  });
-
-  final String repoName;
-  final String branchPath;
-  final String noteFile;
-  final String content;
-  final DateTime? updatedAt;
 }
 
 Future<AppSettings> _loadAppSettings(Directory projectRoot) async {
@@ -376,63 +387,6 @@ Future<RevisionDiffResult> _loadRevisionDiff({
   );
 }
 
-class ProjectReportResult {
-  const ProjectReportResult({
-    required this.id,
-    required this.repoName,
-    required this.model,
-    required this.title,
-    required this.userPrompt,
-    required this.report,
-    required this.reportFile,
-    required this.createdAt,
-  });
-
-  factory ProjectReportResult.fromJson(
-    Map<String, dynamic> json, {
-    required String fallbackRepoName,
-    required String fallbackModel,
-  }) {
-    return ProjectReportResult(
-      id: json['id']?.toString() ?? '',
-      repoName: json['repo']?.toString() ?? fallbackRepoName,
-      model: json['model']?.toString() ?? fallbackModel,
-      title: json['title']?.toString() ?? '',
-      userPrompt: (json['user_prompt'] ?? json['prompt'])?.toString() ?? '',
-      report: json['report']?.toString() ?? '',
-      reportFile: json['report_file']?.toString() ?? '',
-      createdAt: _parseDateTime(json['created_at']),
-    );
-  }
-
-  final String id;
-  final String repoName;
-  final String model;
-  final String title;
-  final String userPrompt;
-  final String report;
-  final String reportFile;
-  final DateTime? createdAt;
-}
-
-class RevisionDiffResult {
-  const RevisionDiffResult({
-    required this.repoName,
-    required this.revision,
-    required this.path,
-    required this.diff,
-    required this.cacheFile,
-    required this.cached,
-  });
-
-  final String repoName;
-  final int revision;
-  final String path;
-  final String diff;
-  final String cacheFile;
-  final bool cached;
-}
-
 Directory _settingsDir(Directory projectRoot) {
   return Directory(_joinPath(projectRoot.path, '.runtime_configs'));
 }
@@ -486,19 +440,4 @@ DateTime? _parseDateTime(Object? value) {
     return null;
   }
   return DateTime.tryParse(text);
-}
-
-String _defaultSvnCommand() {
-  if (Platform.isWindows) {
-    return r'C:\Program Files\TortoiseSVN\bin\svn.exe';
-  }
-  return 'svn';
-}
-
-String _defaultSvnParameters() {
-  return '--non-interactive $_svnTrustArg';
-}
-
-String _defaultPythonCommand() {
-  return Platform.isWindows ? 'py -3.14' : 'python3';
 }

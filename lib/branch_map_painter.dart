@@ -1,4 +1,6 @@
-part of 'main.dart';
+import 'package:flutter/material.dart';
+
+import 'aura_theme.dart';
 
 class BranchMapBackgroundPainter extends CustomPainter {
   const BranchMapBackgroundPainter({required this.colors});

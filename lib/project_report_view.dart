@@ -1,4 +1,14 @@
-part of 'main.dart';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+
+import 'aura_theme.dart';
+import 'localization.dart';
+import 'models.dart';
+import 'utils.dart';
 
 class ProjectReportLogEntry {
   const ProjectReportLogEntry({
@@ -1109,6 +1119,38 @@ class _ReportContentState extends State<_ReportContent> {
   }
 }
 
+class _InfoLine extends StatelessWidget {
+  const _InfoLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 86,
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: _aura(context).textSubtle,
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+        ),
+        Expanded(
+          child: SelectableText(
+            value,
+            style: const TextStyle(fontSize: 12.5),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 String _formatLogTime(DateTime time) {
   String two(int value) => value.toString().padLeft(2, '0');
   return '${two(time.hour)}:${two(time.minute)}:${two(time.second)}';
@@ -1207,4 +1249,216 @@ String _defaultProjectReportTitle(String repoName) {
   final now = DateTime.now();
   String two(int value) => value.toString().padLeft(2, '0');
   return '$repoName 專案級報告 ${now.year}-${two(now.month)}-${two(now.day)} ${two(now.hour)}:${two(now.minute)}';
+}
+
+Future<ProjectReportResult> _generateProjectReportStream({
+  required AppSettings settings,
+  required SvnRepository repository,
+  required String reportTitle,
+  required String userPrompt,
+  required void Function(ProjectReportLogEntry entry) onLog,
+}) async {
+  if (settings.notesRootPath.trim().isEmpty) {
+    throw Exception('請先到設定頁指定 Markdown 筆記根目錄。');
+  }
+
+  final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+  try {
+    final base = settings.backendBaseUrl.replaceAll(RegExp(r'/+$'), '');
+    final payload = {
+      'repo': repository.name,
+      'notes_root': settings.notesRootPath,
+      'ollama_base_url': settings.ollamaBaseUrl,
+      'ollama_api_key': settings.ollamaApiKey,
+      'model': settings.ollamaModel,
+      'report_title': reportTitle,
+      'user_prompt': userPrompt,
+    };
+    final bodyBytes = utf8.encode(jsonEncode(payload));
+    final request =
+        await client.postUrl(Uri.parse('$base/api/reports/project_stream'));
+    request.headers.contentType = ContentType.json;
+    request.headers.set(HttpHeaders.connectionHeader, 'close');
+    request.contentLength = bodyBytes.length;
+    request.add(bodyBytes);
+
+    final response = await request.close();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final body = await response.transform(utf8.decoder).join();
+      throw Exception(body.isEmpty
+          ? 'Backend HTTP ${response.statusCode}'
+          : 'Backend HTTP ${response.statusCode}: $body');
+    }
+
+    ProjectReportResult? result;
+    await for (final line
+        in response.transform(utf8.decoder).transform(const LineSplitter())) {
+      if (line.trim().isEmpty) {
+        continue;
+      }
+      final decoded = jsonDecode(line);
+      if (decoded is! Map<String, dynamic>) {
+        onLog(ProjectReportLogEntry(
+          level: 'warn',
+          message: '收到非物件格式的後端事件：$line',
+          time: DateTime.now(),
+        ));
+        continue;
+      }
+
+      final type = decoded['type']?.toString() ?? 'log';
+      if (type == 'log') {
+        onLog(ProjectReportLogEntry.fromJson(decoded));
+      } else if (type == 'error') {
+        final entry = ProjectReportLogEntry.fromJson(decoded);
+        onLog(entry);
+        throw Exception(entry.message);
+      } else if (type == 'result') {
+        result = ProjectReportResult.fromJson(
+          decoded,
+          fallbackRepoName: repository.name,
+          fallbackModel: settings.ollamaModel,
+        );
+      } else {
+        onLog(ProjectReportLogEntry(
+          level: 'warn',
+          message: '收到未知後端事件 type=$type',
+          time: DateTime.now(),
+        ));
+      }
+    }
+
+    if (result == null) {
+      throw Exception('後端串流已結束，但沒有回傳報告結果。');
+    }
+    return result;
+  } on SocketException catch (error) {
+    throw Exception(
+      '無法連線到本地後端：${settings.backendBaseUrl}。原始錯誤：${error.message}',
+    );
+  } on HttpException catch (error) {
+    throw Exception(
+      '後端連線中斷：${settings.backendBaseUrl}。原始錯誤：${error.message}',
+    );
+  } finally {
+    client.close(force: true);
+  }
+}
+
+Future<List<ProjectReportResult>> _loadProjectReportHistory({
+  required AppSettings settings,
+  required SvnRepository repository,
+}) async {
+  if (settings.notesRootPath.trim().isEmpty) {
+    throw Exception('請先到設定頁指定 Markdown 筆記根目錄。');
+  }
+
+  final decoded = await _backendPost(settings, '/api/reports/history', {
+    'repo': repository.name,
+    'notes_root': settings.notesRootPath,
+  });
+  final reports = decoded['reports'];
+  if (reports is! List) {
+    return [];
+  }
+  return reports
+      .whereType<Map>()
+      .map(
+        (item) => ProjectReportResult.fromJson(
+          Map<String, dynamic>.from(item),
+          fallbackRepoName: repository.name,
+          fallbackModel: settings.ollamaModel,
+        ),
+      )
+      .toList();
+}
+
+Future<Map<String, dynamic>> _backendPost(
+  AppSettings settings,
+  String path,
+  Map<String, dynamic> payload, {
+  Duration timeout = const Duration(seconds: 30),
+}) async {
+  final client = HttpClient();
+  try {
+    final base = settings.backendBaseUrl.replaceAll(RegExp(r'/+$'), '');
+    final bodyBytes = utf8.encode(jsonEncode(payload));
+    final request = await client.postUrl(Uri.parse('$base$path'));
+    request.headers.contentType = ContentType.json;
+    request.headers.set(HttpHeaders.connectionHeader, 'close');
+    request.contentLength = bodyBytes.length;
+    request.add(bodyBytes);
+    final response = await request.close().timeout(timeout);
+    final body = await response.transform(utf8.decoder).join();
+    final decoded = body.isEmpty ? <String, dynamic>{} : jsonDecode(body);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(decoded is Map && decoded['error'] != null
+          ? decoded['error']
+          : 'Backend HTTP ${response.statusCode}');
+    }
+    if (decoded is Map<String, dynamic>) {
+      if (decoded['error'] != null) {
+        throw Exception(decoded['error']);
+      }
+      return decoded;
+    }
+    throw Exception('Backend response is not an object.');
+  } on SocketException catch (error) {
+    throw Exception(
+      '無法連線到本地後端：${settings.backendBaseUrl}。請到設定頁按「啟動本地後端」或「檢查狀態」。原始錯誤：${error.message}',
+    );
+  } on HttpException catch (error) {
+    throw Exception(
+      '後端連線中斷：${settings.backendBaseUrl}。請確認後端仍在執行，或到設定頁重新啟動。原始錯誤：${error.message}',
+    );
+  } finally {
+    client.close(force: true);
+  }
+}
+
+DateTime? _parseDateTime(Object? value) {
+  final text = value?.toString() ?? '';
+  if (text.isEmpty) {
+    return null;
+  }
+  return DateTime.tryParse(text);
+}
+
+class ProjectReportResult {
+  const ProjectReportResult({
+    required this.id,
+    required this.repoName,
+    required this.model,
+    required this.title,
+    required this.userPrompt,
+    required this.report,
+    required this.reportFile,
+    required this.createdAt,
+  });
+
+  factory ProjectReportResult.fromJson(
+    Map<String, dynamic> json, {
+    required String fallbackRepoName,
+    required String fallbackModel,
+  }) {
+    return ProjectReportResult(
+      id: json['id']?.toString() ?? '',
+      repoName: json['repo']?.toString() ?? fallbackRepoName,
+      model: json['model']?.toString() ?? fallbackModel,
+      title: json['title']?.toString() ?? '',
+      userPrompt: (json['user_prompt'] ?? json['prompt'])?.toString() ?? '',
+      report: json['report']?.toString() ?? '',
+      reportFile: json['report_file']?.toString() ?? '',
+      createdAt: _parseDateTime(json['created_at']),
+    );
+  }
+
+  final String id;
+  final String repoName;
+  final String model;
+  final String title;
+  final String userPrompt;
+  final String report;
+  final String reportFile;
+  final DateTime? createdAt;
 }

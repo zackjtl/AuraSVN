@@ -1,4 +1,10 @@
-part of 'main.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+
+import 'aura_theme.dart';
+import 'localization.dart';
+import 'models.dart';
+import 'utils.dart';
 
 class SettingsView extends StatelessWidget {
   const SettingsView({
@@ -756,4 +762,51 @@ bool _profilesEqual(
     }
   }
   return true;
+}
+
+class _InfoLine extends StatelessWidget {
+  const _InfoLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 86,
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: _aura(context).textSubtle,
+                  fontWeight: FontWeight.w800,
+                ),
+          ),
+        ),
+        Expanded(
+          child: SelectableText(
+            value,
+            style: const TextStyle(fontSize: 12.5),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+String _defaultSvnCommand() {
+  if (Platform.isWindows) {
+    return r'C:\Program Files\TortoiseSVN\bin\svn.exe';
+  }
+  return 'svn';
+}
+
+String _defaultSvnParameters() {
+  return '--non-interactive --trust-server-cert-failures=unknown-ca,cn-mismatch,expired,not-yet-valid,other';
+}
+
+String _defaultPythonCommand() {
+  return Platform.isWindows ? 'py -3.14' : 'python3';
 }
