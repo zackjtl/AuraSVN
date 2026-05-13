@@ -1,12 +1,12 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:graphview/GraphView.dart' as graphview;
 
 part 'branch_map_painter.dart';
@@ -17,16 +17,16 @@ part 'settings_view.dart';
 
 const _svnTrustArg =
     '--trust-server-cert-failures=unknown-ca,cn-mismatch,expired,not-yet-valid,other';
-const _cyberBackground = Color(0xFF050816);
-const _cyberSurface = Color(0xE60B1226);
-const _cyberSurfaceAlt = Color(0xFF111C36);
-const _cyberSurfaceSoft = Color(0xFF17233F);
-const _cyberAccent = Color(0xFF38BDF8);
-const _cyberViolet = Color(0xFF8B5CF6);
-const _cyberText = Color(0xFFE2E8F0);
-const _cyberTextMuted = Color(0xFF94A3B8);
-const _cyberTextSubtle = Color(0xFF64748B);
-const _cyberBorder = Color(0xFF1E3A5F);
+const _cyberBackground = Color(0xFF0D1515);
+const _cyberSurface = Color(0xE6192122);
+const _cyberSurfaceAlt = Color(0xFF232B2C);
+const _cyberSurfaceSoft = Color(0xFF151D1E);
+const _cyberAccent = Color(0xFF00DBE7);
+const _cyberViolet = Color(0xFFEBB2FF);
+const _cyberText = Color(0xFFDCE4E4);
+const _cyberTextMuted = Color(0xFFB9CACB);
+const _cyberTextSubtle = Color(0xFF849495);
+const _cyberBorder = Color(0xFF3A494B);
 
 const _dayBackground = Color(0xFFF5F7FB);
 const _daySurface = Color(0xF0FFFFFF);
@@ -38,6 +38,19 @@ const _dayText = Color(0xFF0F172A);
 const _dayTextMuted = Color(0xFF475569);
 const _dayTextSubtle = Color(0xFF64748B);
 const _dayBorder = Color(0xFFE2E8F0);
+
+/// code.html (Stitch) — surface-container-high, surface-dim, primary-fixed
+const _stitchSurfaceContainerHigh = Color(0xFF232B2C);
+const _stitchSurfaceDim = Color(0xFF0D1515);
+const _stitchPrimaryFixed = Color(0xFF74F5FF);
+const _stitchGlassFill = Color(0xFF0D1515);
+const _stitchGlassBorder = Color(0x1AFFFFFF);
+
+/// 頂部儀表條左邊框強調色（Commits → Nodes → Backend → Author）
+const _metricStripLeftCommits = Color(0xFF836A91);
+const _metricStripLeftNodes = Color(0xFF71EEF8);
+const _metricStripLeftBackend = Color(0xFFFFB86B);
+const _metricStripLeftAuthor = Color(0xFFFF6B9D);
 
 final _appearanceThemeNotifier = ValueNotifier<String>('night');
 
@@ -84,6 +97,8 @@ ThemeData _buildAuraThemeData(String appearanceThemeCode) {
     outline: colors.border,
   );
   final base = night ? ThemeData.dark() : ThemeData.light();
+  final baseTextTheme =
+      night ? GoogleFonts.interTextTheme(base.textTheme) : base.textTheme;
 
   return ThemeData(
     brightness: night ? Brightness.dark : Brightness.light,
@@ -91,14 +106,16 @@ ThemeData _buildAuraThemeData(String appearanceThemeCode) {
     useMaterial3: true,
     scaffoldBackgroundColor: colors.background,
     extensions: [colors],
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       clipBehavior: Clip.antiAlias,
       elevation: 0,
-      color: colors.surface,
+      color: night ? _cyberBackground : colors.surface,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(24),
-        side: BorderSide(color: colors.border),
+        borderRadius: BorderRadius.circular(night ? 8 : 14),
+        side: BorderSide(
+          color: night ? _stitchGlassBorder : colors.border,
+        ),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
@@ -120,13 +137,13 @@ ThemeData _buildAuraThemeData(String appearanceThemeCode) {
       hintStyle: TextStyle(color: colors.textSubtle),
       prefixIconColor: colors.textMuted,
     ),
-    textTheme: base.textTheme.apply(
+    textTheme: baseTextTheme.apply(
       bodyColor: colors.text,
       displayColor: colors.text,
     ),
     chipTheme: ChipThemeData(
       backgroundColor: colors.surfaceSoft,
-      selectedColor: colors.accent.withOpacity(night ? 0.2 : 0.14),
+      selectedColor: colors.accent.withValues(alpha: night ? 0.2 : 0.14),
       side: BorderSide(color: colors.border),
       labelStyle: TextStyle(color: colors.text),
       secondaryLabelStyle: TextStyle(color: colors.text),
@@ -1066,84 +1083,158 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-    final body = _isInitializing
+    Widget consoleWidget() => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.paddingOf(context).bottom,
+          ),
+          child: _OutputConsole(
+            logs: _logs,
+            expanded: _outputConsoleExpanded,
+            onToggleExpanded: () {
+              setState(() {
+                _outputConsoleExpanded = !_outputConsoleExpanded;
+              });
+            },
+          ),
+        );
+
+    final Widget shellContent = _isInitializing
         ? const Center(child: CircularProgressIndicator())
         : LayoutBuilder(
             builder: (context, constraints) {
               if (_showSettings) {
-                return Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: _buildSettingsPage(),
+                return Column(
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: _buildSettingsPage(),
+                      ),
+                    ),
+                    consoleWidget(),
+                  ],
                 );
               }
 
               if (_showRepositoryProfiles) {
-                return Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: _buildRepositoryProfilesPage(),
+                return Column(
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: _buildRepositoryProfilesPage(),
+                      ),
+                    ),
+                    consoleWidget(),
+                  ],
                 );
               }
 
               if (_showAiAnalysis) {
-                return Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: _buildAiAnalysisPage(),
+                return Column(
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: _buildAiAnalysisPage(),
+                      ),
+                    ),
+                    consoleWidget(),
+                  ],
                 );
               }
 
               if (_showAiHistory) {
-                return Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: _buildAiHistoryPage(),
+                return Column(
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: _buildAiHistoryPage(),
+                      ),
+                    ),
+                    consoleWidget(),
+                  ],
                 );
               }
 
               if (_branchCommitsPath != null) {
-                return Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: _buildBranchCommitsPage(_branchCommitsPath!),
+                return Column(
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: _buildBranchCommitsPage(_branchCommitsPath!),
+                      ),
+                    ),
+                    consoleWidget(),
+                  ],
                 );
               }
 
               if (_showVisualMap) {
-                return Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: _buildVisualMapPage(),
+                return Column(
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: _buildVisualMapPage(),
+                      ),
+                    ),
+                    consoleWidget(),
+                  ],
                 );
               }
 
               final isCompact = constraints.maxWidth < 1000;
               if (isCompact) {
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      SizedBox(height: 820, child: _buildControlPanel()),
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        height: 900,
-                        child: _buildDataPanel(isCompact: true),
+                return Column(
+                  children: [
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          children: [
+                            SizedBox(height: 820, child: _buildControlPanel()),
+                            const SizedBox(height: 20),
+                            SizedBox(
+                              height: 900,
+                              child: _buildDataPanel(isCompact: true),
+                            ),
+                          ],
+                        ),
                       ),
-                    ],
-                  ),
+                    ),
+                    consoleWidget(),
+                  ],
                 );
               }
 
-              return Padding(
-                padding: const EdgeInsets.all(24),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    AnimatedContainer(
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: EdgeInsets.only(
+                      left: MediaQuery.viewPaddingOf(context).left,
+                    ),
+                    child: AnimatedContainer(
                       duration: const Duration(milliseconds: 180),
                       curve: Curves.easeOut,
-                      width: _controlPanelCollapsed ? 78 : 360,
+                      width: _controlPanelCollapsed ? 80 : 304,
                       child: _buildControlPanel(),
                     ),
-                    const SizedBox(width: 20),
-                    Expanded(child: _buildDataPanel(isCompact: false)),
-                  ],
-                ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: _buildDataPanel(isCompact: false),
+                        ),
+                        consoleWidget(),
+                      ],
+                    ),
+                  ),
+                ],
               );
             },
           );
@@ -1152,31 +1243,17 @@ class _DashboardPageState extends State<DashboardPage> {
       body: Stack(
         children: [
           Positioned.fill(
-            child: _isNightAppearance(_appearanceThemeCode)
-                ? const _CyberSpaceBackground()
-                : const _DayAuraBackground(),
+            child: ColoredBox(
+              color: _isNightAppearance(_appearanceThemeCode)
+                  ? _cyberBackground
+                  : _dayBackground,
+            ),
           ),
           LanguageScope(
             languageCode: _languageCode,
             child: SafeArea(
-              child: Column(
-                children: [
-                  Expanded(child: body),
-                  if (!_isInitializing)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 18),
-                      child: _OutputConsole(
-                        logs: _logs,
-                        expanded: _outputConsoleExpanded,
-                        onToggleExpanded: () {
-                          setState(() {
-                            _outputConsoleExpanded = !_outputConsoleExpanded;
-                          });
-                        },
-                      ),
-                    ),
-                ],
-              ),
+              left: false,
+              child: shellContent,
             ),
           ),
         ],
@@ -1441,16 +1518,19 @@ class _DashboardPageState extends State<DashboardPage> {
                       children: [
                         Text(
                           _t(context, '分支詳情', 'Branch Detail'),
-                          style: const TextStyle(
+                          style: GoogleFonts.inter(
                             fontSize: 20,
-                            fontWeight: FontWeight.w900,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.2,
+                            color: _aura(context).text,
                           ),
                         ),
                         SelectableText(
                           branchPath,
-                          style: TextStyle(
+                          style: GoogleFonts.jetBrainsMono(
                             color: _aura(context).textMuted,
-                            fontSize: 12.5,
+                            fontSize: 12,
+                            height: 1.35,
                           ),
                         ),
                       ],
@@ -1466,6 +1546,9 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           const SizedBox(height: 14),
           Card(
+            color: Theme.of(context).brightness == Brightness.dark
+                ? _stitchSurfaceDim
+                : null,
             child: TabBar(
               tabs: [
                 Tab(
@@ -1482,28 +1565,104 @@ class _DashboardPageState extends State<DashboardPage> {
           Expanded(
             child: TabBarView(
               children: [
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: commits.isEmpty
+                Builder(
+                  builder: (context) {
+                    final dark = Theme.of(context).brightness == Brightness.dark;
+                    final aura = _aura(context);
+                    final list = commits.isEmpty
                         ? Center(
-                            child: Text(_t(
-                              context,
-                              '找不到此 branch 相關 commit。',
-                              'No commits found for this branch.',
-                            )),
+                            child: Text(
+                              _t(
+                                context,
+                                '找不到此 branch 相關 commit。',
+                                'No commits found for this branch.',
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
                           )
-                        : ListView.separated(
+                        : ListView.builder(
+                            padding: EdgeInsets.fromLTRB(
+                              dark ? 12 : 8,
+                              dark ? 16 : 4,
+                              12,
+                              dark ? 28 : 4,
+                            ),
                             itemCount: commits.length,
-                            separatorBuilder: (context, index) =>
-                                const SizedBox(height: 10),
-                            itemBuilder: (context, index) => _CommitTile(
+                            itemBuilder: (context, index) =>
+                                _CommitTimelineItem(
                               commit: commits[index],
+                              isFirst: index == 0,
+                              isLast: index == commits.length - 1,
                               repository: _selectedRepository,
                               settings: _settings,
                             ),
+                          );
+                    if (!dark) {
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                          child: list,
+                        ),
+                      );
+                    }
+                    return DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: _stitchSurfaceDim,
+                        border: Border(
+                          right: BorderSide(
+                            color: aura.border.withValues(alpha: 0.22),
                           ),
-                  ),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    _t(context, 'Commit 歷史', 'Commit History'),
+                                    style: GoogleFonts.inter(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                      color: aura.text,
+                                    ),
+                                  ),
+                                ),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.filter_list_rounded,
+                                      size: 16,
+                                      color: aura.textSubtle,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'FILTER',
+                                      style: GoogleFonts.jetBrainsMono(
+                                        fontSize: 11,
+                                        letterSpacing: 0.6,
+                                        fontWeight: FontWeight.w500,
+                                        color: aura.textSubtle,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            height: 1,
+                            color: aura.border.withValues(alpha: 0.1),
+                          ),
+                          Expanded(child: list),
+                        ],
+                      ),
+                    );
+                  },
                 ),
                 BranchNoteEditor(
                   repository: _selectedRepository,
@@ -1609,98 +1768,156 @@ class _ControlPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final aura = _aura(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final sidebarDecoration = BoxDecoration(
+      color: isDark ? _stitchSurfaceContainerHigh : aura.surfaceAlt,
+      border: Border(
+        right: BorderSide(
+          color: aura.border.withValues(alpha: isDark ? 0.22 : 0.4),
+        ),
+      ),
+      boxShadow: isDark
+          ? [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.5),
+                blurRadius: 28,
+                offset: const Offset(4, 0),
+              ),
+            ]
+          : null,
+    );
+
+    final sidebarActionGray = isDark
+        ? const Color(0xFFC8D0D0)
+        : aura.textMuted;
+    final sidebarActionStyle = TextButton.styleFrom(
+      alignment: AlignmentDirectional.centerStart,
+      foregroundColor: sidebarActionGray,
+      backgroundColor: Colors.transparent,
+      disabledForegroundColor: sidebarActionGray.withValues(alpha: 0.45),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      minimumSize: const Size.fromHeight(44),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide.none,
+      ),
+    );
 
     if (collapsed) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Column(
-            children: [
-              IconButton(
-                tooltip: _t(context, '展開側邊控制欄', 'Expand side panel'),
-                onPressed: onToggleCollapsed,
-                icon: const Icon(Icons.keyboard_double_arrow_right_rounded),
-              ),
-              const Divider(),
-              Tooltip(
-                message: selectedRepository.name,
-                child: CircleAvatar(
-                  backgroundColor: theme.colorScheme.primary.withOpacity(0.12),
-                  child: Text(
-                    selectedRepository.name.replaceAll('_AP', '').substring(2),
-                    style: TextStyle(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 11,
-                    ),
+      return Container(
+        decoration: sidebarDecoration,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Column(
+          children: [
+            IconButton(
+              tooltip: _t(context, '展開側邊控制欄', 'Expand side panel'),
+              onPressed: onToggleCollapsed,
+              icon: const Icon(Icons.keyboard_double_arrow_right_rounded),
+            ),
+            const SizedBox(height: 4),
+            Container(
+              height: 1,
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              color: aura.border.withValues(alpha: 0.4),
+            ),
+            const SizedBox(height: 14),
+            Tooltip(
+              message: selectedRepository.name,
+              child: CircleAvatar(
+                backgroundColor:
+                    theme.colorScheme.primary.withValues(alpha: 0.14),
+                child: Text(
+                  selectedRepository.name.replaceAll('_AP', '').substring(2),
+                  style: TextStyle(
+                    color: theme.colorScheme.primary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              IconButton(
-                tooltip: _t(context, '執行增量更新', 'Run incremental update'),
-                onPressed: isRefreshing ? null : onUpdatePressed,
-                icon: isRefreshing
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.sync_rounded),
-              ),
-              IconButton(
-                tooltip: 'Repository Profiles',
-                onPressed: isRefreshing ? null : onRepositoryProfilesPressed,
-                icon: const Icon(Icons.storage_rounded),
-              ),
-              IconButton(
-                tooltip: _t(context, '設定', 'Settings'),
-                onPressed: isRefreshing ? null : onSettingsPressed,
-                icon: const Icon(Icons.settings_rounded),
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 12),
+            IconButton(
+              tooltip: _t(context, '執行增量更新', 'Run incremental update'),
+              onPressed: isRefreshing ? null : onUpdatePressed,
+              icon: isRefreshing
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.sync_rounded),
+            ),
+            IconButton(
+              tooltip: 'Repository Profiles',
+              onPressed: isRefreshing ? null : onRepositoryProfilesPressed,
+              icon: const Icon(Icons.storage_rounded),
+            ),
+            IconButton(
+              tooltip: _t(context, '設定', 'Settings'),
+              onPressed: isRefreshing ? null : onSettingsPressed,
+              icon: const Icon(Icons.settings_rounded),
+            ),
+          ],
         ),
       );
     }
 
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return Container(
+      decoration: sidebarDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            height: 84,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 12, 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const Expanded(child: _AuraBrandMark()),
+                  IconButton(
+                    tooltip: _t(context, '收合側邊控制欄', 'Collapse side panel'),
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 32,
+                      height: 32,
+                    ),
+                    onPressed: onToggleCollapsed,
+                    icon: const Icon(
+                      Icons.keyboard_double_arrow_left_rounded,
+                      size: 20,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Container(
+            height: 1,
+            color: aura.border.withValues(alpha: 0.35),
+          ),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
               children: [
-                SizedBox(
-                  height: 74,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      const Positioned.fill(child: _AuraBrandMark()),
-                      Positioned(
-                        left: 0,
-                        top: 0,
-                        child: IconButton(
-                          tooltip:
-                              _t(context, '收合側邊控制欄', 'Collapse side panel'),
-                          visualDensity: VisualDensity.compact,
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints.tightFor(
-                            width: 36,
-                            height: 36,
-                          ),
-                          onPressed: onToggleCollapsed,
-                          icon: const Icon(
-                            Icons.keyboard_double_arrow_left_rounded,
-                          ),
-                        ),
-                      ),
-                    ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                  child: Text(
+                    'REPOSITORIES',
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 10,
+                      letterSpacing: 1.2,
+                      fontWeight: FontWeight.w700,
+                      color: aura.textSubtle,
+                      height: 1.2,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 14),
                 _RepositorySelector(
                   selectedRepository: selectedRepository,
                   repositories: repositories,
@@ -1708,65 +1925,77 @@ class _ControlPanel extends StatelessWidget {
                   onRepositorySelected: onRepositorySelected,
                 ),
                 const SizedBox(height: 18),
-                _InfoLine(label: 'URL', value: selectedRepository.url),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: _InfoLine(label: 'URL', value: selectedRepository.url),
+                ),
                 const SizedBox(height: 8),
-                _InfoLine(
-                  label: _t(context, '專案根目錄', 'Project Root'),
-                  value: rootPath,
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: _InfoLine(
+                    label: _t(context, '專案根目錄', 'Project Root'),
+                    value: rootPath,
+                  ),
                 ),
-                const SizedBox(height: 20),
-                OutlinedButton.icon(
-                  onPressed: isRefreshing ? null : onRepositoryProfilesPressed,
-                  icon: const Icon(Icons.storage_rounded),
-                  label: const Text('Repository Profiles'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(46),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                const SizedBox(height: 18),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Container(
+                    height: 1,
+                    color: aura.border.withValues(alpha: isDark ? 0.28 : 0.38),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    onPressed:
+                        isRefreshing ? null : onRepositoryProfilesPressed,
+                    icon: const Icon(Icons.storage_rounded),
+                    label: const Text('Repository Profiles'),
+                    style: sidebarActionStyle,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    onPressed: isRefreshing ? null : onUpdatePressed,
+                    icon: isRefreshing
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: sidebarActionGray,
+                            ),
+                          )
+                        : const Icon(Icons.sync_rounded),
+                    label: Text(
+                      isRefreshing
+                          ? _t(context, '更新中...', 'Updating...')
+                          : _t(context, '執行增量更新', 'Run Incremental Update'),
                     ),
+                    style: sidebarActionStyle,
                   ),
                 ),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: isRefreshing ? null : onUpdatePressed,
-                  icon: isRefreshing
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.sync_rounded),
-                  label: Text(
-                    isRefreshing
-                        ? _t(context, '更新中...', 'Updating...')
-                        : _t(context, '執行增量更新', 'Run Incremental Update'),
-                  ),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 _StatusPill(text: status, active: isRefreshing),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: isRefreshing ? null : onSettingsPressed,
-                  icon: const Icon(Icons.settings_rounded),
-                  label: Text(_t(context, '設定', 'Settings')),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(46),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton.icon(
+                    onPressed: isRefreshing ? null : onSettingsPressed,
+                    icon: const Icon(Icons.settings_rounded),
+                    label: Text(_t(context, '設定', 'Settings')),
+                    style: sidebarActionStyle,
                   ),
                 ),
               ],
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -1789,82 +2018,26 @@ class _RepositorySelector extends StatefulWidget {
 }
 
 class _RepositorySelectorState extends State<_RepositorySelector> {
-  bool _expanded = false;
-
   @override
   Widget build(BuildContext context) {
-    final availableRepositories = widget.repositories
-        .where((repository) => repository != widget.selectedRepository)
-        .toList();
-
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'SVN Repository',
-                style: Theme.of(context).textTheme.labelLarge,
-              ),
+        for (final repository in widget.repositories)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: _RepositoryTile(
+              repository: repository,
+              selected: repository == widget.selectedRepository,
+              enabled: widget.enabled,
+              onTap: () {
+                if (repository == widget.selectedRepository) {
+                  return;
+                }
+                widget.onRepositorySelected(repository);
+              },
             ),
-            TextButton.icon(
-              onPressed: !widget.enabled || availableRepositories.isEmpty
-                  ? null
-                  : () {
-                      setState(() {
-                        _expanded = !_expanded;
-                      });
-                    },
-              icon: Icon(
-                _expanded
-                    ? Icons.keyboard_arrow_up_rounded
-                    : Icons.keyboard_arrow_down_rounded,
-              ),
-              label: Text(
-                _expanded
-                    ? _t(context, '收合', 'Collapse')
-                    : _t(context, '切換', 'Switch'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        _RepositoryTile(
-          repository: widget.selectedRepository,
-          selected: true,
-          enabled: false,
-          onTap: () {},
-        ),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 180),
-          child: _expanded
-              ? Padding(
-                  key: const ValueKey('repository-list'),
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Column(
-                    children: availableRepositories
-                        .map(
-                          (repository) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: _RepositoryTile(
-                              repository: repository,
-                              selected: false,
-                              enabled: widget.enabled,
-                              onTap: () {
-                                setState(() {
-                                  _expanded = false;
-                                });
-                                widget.onRepositorySelected(repository);
-                              },
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                )
-              : const SizedBox.shrink(key: ValueKey('repository-list-empty')),
-        ),
+          ),
       ],
     );
   }
@@ -1892,32 +2065,40 @@ class _AuraBrandMark extends StatelessWidget {
                   children: [
                     TextSpan(
                       text: 'Aura ',
-                      style: TextStyle(color: aura.accent),
+                      style: GoogleFonts.inter(
+                        color: Theme.of(context).brightness == Brightness.dark
+                            ? _stitchPrimaryFixed
+                            : aura.accent,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.3,
+                        height: 1,
+                      ),
                     ),
                     TextSpan(
                       text: 'SVN',
-                      style: TextStyle(color: aura.text),
+                      style: GoogleFonts.inter(
+                        color: aura.text,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.3,
+                        height: 1,
+                      ),
                     ),
                   ],
                 ),
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 32,
-                  letterSpacing: 1.4,
-                  fontWeight: FontWeight.w900,
-                  height: 1,
-                ),
               ),
               const SizedBox(height: 4),
               Text(
                 'Insightful SVN Client',
                 textAlign: TextAlign.center,
-                style: TextStyle(
+                style: GoogleFonts.inter(
                   color: aura.textMuted,
                   height: 1,
-                  fontSize: 15,
-                  letterSpacing: 0.2,
-                  fontWeight: FontWeight.w500,
+                  fontSize: 13,
+                  letterSpacing: 0.15,
+                  fontWeight: FontWeight.w400,
                 ),
               ),
             ],
@@ -1956,23 +2137,15 @@ class _OutputConsole extends StatelessWidget {
       curve: Curves.easeOut,
       height: expanded ? 260 : collapsedHeight,
       width: double.infinity,
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F172A),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF334155)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.12),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
+      decoration: const BoxDecoration(
+        color: Color(0xFF0D1515),
+        border: Border(
+          top: BorderSide(color: Color(0xFF334155)),
+        ),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Column(
-          children: [
-            SizedBox(
+      child: Column(
+        children: [
+          SizedBox(
               height: headerHeight,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -2093,7 +2266,6 @@ class _OutputConsole extends StatelessWidget {
               ),
           ],
         ),
-      ),
     );
   }
 }
@@ -2122,20 +2294,20 @@ class _BranchCommitPreviewDialog extends StatelessWidget {
           filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
           child: Container(
             decoration: BoxDecoration(
-              color: _aura(context).surface.withOpacity(0.72),
+              color: _aura(context).surface.withValues(alpha: 0.72),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
-                color: theme.colorScheme.primary.withOpacity(0.34),
+                color: theme.colorScheme.primary.withValues(alpha: 0.34),
                 width: 1.2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: theme.colorScheme.primary.withOpacity(0.14),
+                  color: theme.colorScheme.primary.withValues(alpha: 0.14),
                   blurRadius: 34,
                   spreadRadius: 1,
                 ),
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.38),
+                  color: Colors.black.withValues(alpha: 0.38),
                   blurRadius: 40,
                   offset: const Offset(0, 18),
                 ),
@@ -2155,7 +2327,7 @@ class _BranchCommitPreviewDialog extends StatelessWidget {
                       children: [
                         CircleAvatar(
                           backgroundColor:
-                              theme.colorScheme.primary.withOpacity(0.14),
+                              theme.colorScheme.primary.withValues(alpha: 0.14),
                           child: Icon(
                             Icons.receipt_long_rounded,
                             color: theme.colorScheme.primary,
@@ -2365,6 +2537,65 @@ String _shortCommitDate(String date) {
   return date;
 }
 
+/// 頂部區與主內容之間：細青色邊線 + 向下漸層漏光（對齊 Stitch 類 HTML 效果）。
+class _DataPanelTopLeakDivider extends StatelessWidget {
+  const _DataPanelTopLeakDivider();
+
+  /// 漸層向下延伸，拉長羽化；整體亮度靠低 alpha 壓低。
+  static const double _glowExtent = 64;
+
+  @override
+  Widget build(BuildContext context) {
+    final line = Color.alphaBlend(
+      _cyberAccent.withValues(alpha: 0.11),
+      _cyberBackground,
+    );
+    return SizedBox(
+      height: 1 + _glowExtent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(height: 1, color: line),
+          Expanded(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: const [0.0, 0.2, 0.42, 0.65, 0.86, 1.0],
+                  colors: [
+                    Color.alphaBlend(
+                      _cyberAccent.withValues(alpha: 0.038),
+                      _cyberBackground,
+                    ),
+                    Color.alphaBlend(
+                      _cyberAccent.withValues(alpha: 0.022),
+                      _cyberBackground,
+                    ),
+                    Color.alphaBlend(
+                      _cyberAccent.withValues(alpha: 0.012),
+                      _cyberBackground,
+                    ),
+                    Color.alphaBlend(
+                      _cyberAccent.withValues(alpha: 0.006),
+                      _cyberBackground,
+                    ),
+                    Color.alphaBlend(
+                      _cyberAccent.withValues(alpha: 0.002),
+                      _cyberBackground,
+                    ),
+                    _cyberBackground,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _DataPanel extends StatelessWidget {
   const _DataPanel({
     required this.repository,
@@ -2400,141 +2631,351 @@ class _DataPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final latest = data.latestCommit;
+    final isDark = theme.brightness == Brightness.dark;
+    final aura = _aura(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
+        isDark
+            ? DecoratedBox(
+                decoration: const BoxDecoration(
+                  color: Color(0xFF0D1515),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            repository.name,
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w900,
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  repository.name,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: -0.2,
+                                    color: _stitchPrimaryFixed,
+                                  ),
+                                ),
+                                Text(
+                                  repository.url,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w400,
+                                    color: aura.textMuted,
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          Text(
-                            repository.url,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: _aura(context).textMuted,
-                            ),
+                          const SizedBox(width: 16),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            alignment: WrapAlignment.end,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              if (latest != null)
+                                Chip(
+                                  avatar: const Icon(Icons.history_rounded,
+                                      size: 18),
+                                  label:
+                                      Text('Latest r${latest.revision}'),
+                                ),
+                              FilledButton.icon(
+                                onPressed: onAiAnalysisPressed,
+                                icon: const Icon(Icons.auto_awesome_rounded),
+                                label: Text(_t(context, 'AI 專案分析',
+                                    'AI Project Analysis')),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: onAiHistoryPressed,
+                                icon: const Icon(Icons.history_edu_rounded),
+                                label: Text(_t(
+                                  context,
+                                  '瀏覽歷史AI分析',
+                                  'Browse AI Analysis History',
+                                )),
+                              ),
+                              SegmentedButton<bool>(
+                                style: ButtonStyle(
+                                  backgroundColor:
+                                      WidgetStateProperty.resolveWith(
+                                          (states) {
+                                    if (states.contains(
+                                            WidgetState.selected) &&
+                                        Theme.of(context).brightness ==
+                                            Brightness.dark) {
+                                      return const Color(0xFF17233F);
+                                    }
+                                    return null;
+                                  }),
+                                ),
+                                segments: const [
+                                  ButtonSegment(
+                                    value: false,
+                                    icon: Icon(Icons.account_tree_outlined),
+                                    label: Text('Topology'),
+                                  ),
+                                  ButtonSegment(
+                                    value: true,
+                                    icon: Icon(Icons.hub_rounded),
+                                    label: Text('Visual Map'),
+                                  ),
+                                ],
+                                selected: {showVisualMap},
+                                onSelectionChanged: (selection) {
+                                  onVisualMapChanged(selection.first);
+                                },
+                              ),
+                            ],
                           ),
                         ],
                       ),
+                      if (error != null) ...[
+                        const SizedBox(height: 16),
+                        _ErrorBanner(error: error!),
+                      ],
+                      const SizedBox(height: 22),
+                      LayoutBuilder(
+                        builder: (context, c) {
+                          const gap = 10.0;
+                          final inner = c.maxWidth.isFinite && c.maxWidth > 0
+                              ? c.maxWidth
+                              : (MediaQuery.sizeOf(context).width - 96)
+                                  .clamp(240.0, 2400.0);
+                          final cardW = inner > 3 * gap
+                              ? (inner - 3 * gap) / 4
+                              : inner / 4;
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: cardW,
+                                child: _MetricCard(
+                                  label: _t(context, 'Commits', 'Commits'),
+                                  value: data.commits.length.toString(),
+                                  icon: Icons.receipt_long_rounded,
+                                  accentBorder: _metricStripLeftCommits,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              SizedBox(
+                                width: cardW,
+                                child: _MetricCard(
+                                  label: _t(context, '節點', 'Nodes'),
+                                  value: data.topology.length.toString(),
+                                  icon: Icons.account_tree_outlined,
+                                  accentBorder: _metricStripLeftNodes,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              SizedBox(
+                                width: cardW,
+                                child: _BackendStatusCard(
+                                  status: backendStatus,
+                                  onCheck: onCheckBackend,
+                                  onStart: onStartBackend,
+                                  accentBorder: _metricStripLeftBackend,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              SizedBox(
+                                width: cardW,
+                                child: _MetricCard(
+                                  label: _t(context, '作者', 'Author'),
+                                  value: latest?.author.isNotEmpty == true
+                                      ? latest!.author
+                                      : '-',
+                                  icon: Icons.person_search_rounded,
+                                  accentBorder: _metricStripLeftAuthor,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              )
+              : Material(
+                  elevation: 0,
+                  color: theme.colorScheme.surface,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: theme.dividerColor),
+                      ),
                     ),
-                    const SizedBox(width: 16),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      alignment: WrapAlignment.end,
-                      crossAxisAlignment: WrapCrossAlignment.center,
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (latest != null)
-                          Chip(
-                            avatar: const Icon(Icons.history_rounded, size: 18),
-                            label: Text('Latest r${latest.revision}'),
-                          ),
-                        FilledButton.icon(
-                          onPressed: onAiAnalysisPressed,
-                          icon: const Icon(Icons.auto_awesome_rounded),
-                          label: Text(
-                              _t(context, 'AI 專案分析', 'AI Project Analysis')),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: onAiHistoryPressed,
-                          icon: const Icon(Icons.history_edu_rounded),
-                          label: Text(_t(
-                            context,
-                            '瀏覽歷史AI分析',
-                            'Browse AI Analysis History',
-                          )),
-                        ),
-                        SegmentedButton<bool>(
-                          style: ButtonStyle(
-                            backgroundColor:
-                                MaterialStateProperty.resolveWith((states) {
-                              if (states.contains(MaterialState.selected) &&
-                                  Theme.of(context).brightness ==
-                                      Brightness.dark) {
-                                return const Color(0xFF17233F);
-                              }
-                              return null;
-                            }),
-                          ),
-                          segments: const [
-                            ButtonSegment(
-                              value: false,
-                              icon: Icon(Icons.account_tree_outlined),
-                              label: Text('Topology'),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    repository.name,
+                                    style: theme.textTheme.headlineSmall
+                                        ?.copyWith(
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  Text(
+                                    repository.url,
+                                    style: theme.textTheme.bodyMedium
+                                        ?.copyWith(
+                                      color: _aura(context).textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                            ButtonSegment(
-                              value: true,
-                              icon: Icon(Icons.hub_rounded),
-                              label: Text('Visual Map'),
+                            const SizedBox(width: 16),
+                            Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              alignment: WrapAlignment.end,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                if (latest != null)
+                                  Chip(
+                                    avatar: const Icon(Icons.history_rounded,
+                                        size: 18),
+                                    label: Text('Latest r${latest.revision}'),
+                                  ),
+                                FilledButton.icon(
+                                  onPressed: onAiAnalysisPressed,
+                                  icon: const Icon(Icons.auto_awesome_rounded),
+                                  label: Text(_t(context, 'AI 專案分析',
+                                      'AI Project Analysis')),
+                                ),
+                                OutlinedButton.icon(
+                                  onPressed: onAiHistoryPressed,
+                                  icon: const Icon(Icons.history_edu_rounded),
+                                  label: Text(_t(
+                                    context,
+                                    '瀏覽歷史AI分析',
+                                    'Browse AI Analysis History',
+                                  )),
+                                ),
+                                SegmentedButton<bool>(
+                                  style: ButtonStyle(
+                                    backgroundColor:
+                                        WidgetStateProperty.resolveWith(
+                                            (states) {
+                                      if (states.contains(
+                                              WidgetState.selected) &&
+                                          Theme.of(context).brightness ==
+                                              Brightness.dark) {
+                                        return const Color(0xFF17233F);
+                                      }
+                                      return null;
+                                    }),
+                                  ),
+                                  segments: const [
+                                    ButtonSegment(
+                                      value: false,
+                                      icon: Icon(Icons.account_tree_outlined),
+                                      label: Text('Topology'),
+                                    ),
+                                    ButtonSegment(
+                                      value: true,
+                                      icon: Icon(Icons.hub_rounded),
+                                      label: Text('Visual Map'),
+                                    ),
+                                  ],
+                                  selected: {showVisualMap},
+                                  onSelectionChanged: (selection) {
+                                    onVisualMapChanged(selection.first);
+                                  },
+                                ),
+                              ],
                             ),
                           ],
-                          selected: {showVisualMap},
-                          onSelectionChanged: (selection) {
-                            onVisualMapChanged(selection.first);
+                        ),
+                        if (error != null) ...[
+                          const SizedBox(height: 16),
+                          _ErrorBanner(error: error!),
+                        ],
+                        const SizedBox(height: 22),
+                        LayoutBuilder(
+                          builder: (context, c) {
+                            const gap = 10.0;
+                            final inner = c.maxWidth.isFinite && c.maxWidth > 0
+                                ? c.maxWidth
+                                : (MediaQuery.sizeOf(context).width - 96)
+                                    .clamp(240.0, 2400.0);
+                            final cardW = inner > 3 * gap
+                                ? (inner - 3 * gap) / 4
+                                : inner / 4;
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(
+                                  width: cardW,
+                                  child: _MetricCard(
+                                    label: _t(context, 'Commits', 'Commits'),
+                                    value: data.commits.length.toString(),
+                                    icon: Icons.receipt_long_rounded,
+                                    accentBorder: _metricStripLeftCommits,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                SizedBox(
+                                  width: cardW,
+                                  child: _MetricCard(
+                                    label: _t(context, '節點', 'Nodes'),
+                                    value: data.topology.length.toString(),
+                                    icon: Icons.account_tree_outlined,
+                                    accentBorder: _metricStripLeftNodes,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                SizedBox(
+                                  width: cardW,
+                                  child: _BackendStatusCard(
+                                    status: backendStatus,
+                                    onCheck: onCheckBackend,
+                                    onStart: onStartBackend,
+                                    accentBorder: _metricStripLeftBackend,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                SizedBox(
+                                  width: cardW,
+                                  child: _MetricCard(
+                                    label: _t(context, '作者', 'Author'),
+                                    value: latest?.author.isNotEmpty == true
+                                        ? latest!.author
+                                        : '-',
+                                    icon: Icons.person_search_rounded,
+                                    accentBorder: _metricStripLeftAuthor,
+                                  ),
+                                ),
+                              ],
+                            );
                           },
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
-                if (error != null) ...[
-                  const SizedBox(height: 16),
-                  _ErrorBanner(error: error!),
-                ],
-                const SizedBox(height: 22),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    _MetricCard(
-                      label: _t(context, 'Commits', 'Commits'),
-                      value: data.commits.length.toString(),
-                      icon: Icons.receipt_long_rounded,
-                    ),
-                    _MetricCard(
-                      label: _t(context, 'Topology Nodes', 'Topology Nodes'),
-                      value: data.topology.length.toString(),
-                      icon: Icons.account_tree_outlined,
-                    ),
-                    _MetricCard(
-                      label: _t(context, 'CSV 分片', 'CSV Shards'),
-                      value: data.shardNames.length.toString(),
-                      icon: Icons.table_chart_outlined,
-                    ),
-                    _BackendStatusCard(
-                      status: backendStatus,
-                      onCheck: onCheckBackend,
-                      onStart: onStartBackend,
-                    ),
-                    _MetricCard(
-                      label: _t(context, '作者', 'Author'),
-                      value: latest?.author.isNotEmpty == true
-                          ? latest!.author
-                          : '-',
-                      icon: Icons.person_search_rounded,
-                    ),
-                  ],
                 ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
+        if (isDark) const _DataPanelTopLeakDivider(),
         Expanded(
           child: data.isEmpty
               ? const _EmptyDataCard()
@@ -2577,7 +3018,12 @@ class _TopologyCard extends StatelessWidget {
         return a.key.compareTo(b.key);
       });
 
-    return Card(
+    final panelBg = theme.brightness == Brightness.dark
+        ? _cyberBackground
+        : _aura(context).surfaceAlt;
+
+    return Material(
+      color: panelBg,
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -2639,51 +3085,85 @@ class _RepositoryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final aura = _aura(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final accentColor = aura.violet;
+    final selectedFg =
+        isDark ? const Color(0xFFF8D8FF) : aura.accent;
+    final unselectedLabel = aura.textMuted;
 
-    return Material(
-      color: selected
-          ? theme.colorScheme.primary.withOpacity(0.1)
-          : _aura(context).surfaceAlt,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(18),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Icon(
-                selected
-                    ? Icons.radio_button_checked
-                    : Icons.radio_button_unchecked,
-                color: selected
-                    ? theme.colorScheme.primary
-                    : _aura(context).textSubtle,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      repository.name,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(
-                      repository.subtitle.isNotEmpty
-                          ? repository.subtitle
-                          : repository.url,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: _aura(context).textMuted,
-                      ),
-                    ),
-                  ],
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOut,
+      transform: selected && isDark
+          ? (Matrix4.identity()..translateByDouble(4, 0, 0, 1))
+          : Matrix4.identity(),
+      decoration: BoxDecoration(
+        color: selected
+            ? accentColor.withValues(alpha: 0.10)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(isDark ? 8 : 10),
+        border: selected
+            ? Border(
+                left: BorderSide(
+                  color: accentColor,
+                  width: isDark ? 4 : 3,
                 ),
-              ),
-            ],
+              )
+            : null,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(isDark ? 8 : 10),
+          hoverColor: isDark
+              ? aura.accent.withValues(alpha: 0.05)
+              : aura.surfaceSoft.withValues(alpha: 0.4),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.account_tree_rounded,
+                  size: 20,
+                  color: selected ? selectedFg : unselectedLabel,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        repository.name,
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight:
+                              selected ? FontWeight.w700 : FontWeight.w600,
+                          color: selected ? selectedFg : aura.text,
+                          height: 1.25,
+                        ),
+                      ),
+                      if (repository.subtitle.isNotEmpty ||
+                          repository.url.isNotEmpty)
+                        Text(
+                          repository.subtitle.isNotEmpty
+                              ? repository.subtitle
+                              : repository.url,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            color: unselectedLabel,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w400,
+                            height: 1.2,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -2707,24 +3187,27 @@ class _TopologyNodeTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final children = node.children;
+    const radius = 0.0;
 
     return Material(
-      color: selected
-          ? theme.colorScheme.primary.withOpacity(0.10)
-          : _aura(context).surfaceAlt,
-      borderRadius: BorderRadius.circular(18),
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(radius),
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(radius),
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(radius),
+            color: selected
+                ? theme.colorScheme.primary.withValues(alpha: 0.08)
+                : (isDark ? _stitchGlassFill : _aura(context).surfaceAlt),
             border: Border.all(
               color: selected
-                  ? theme.colorScheme.primary.withOpacity(0.35)
-                  : _aura(context).border,
+                  ? theme.colorScheme.primary.withValues(alpha: 0.35)
+                  : (isDark ? _stitchGlassBorder : _aura(context).border),
             ),
           ),
           child: Column(
@@ -2799,16 +3282,140 @@ class _TopologyNodeTile extends StatelessWidget {
   }
 }
 
-class _CommitTile extends StatefulWidget {
-  const _CommitTile({
+class _CommitTimelineItem extends StatelessWidget {
+  const _CommitTimelineItem({
     required this.commit,
+    required this.isFirst,
+    required this.isLast,
     this.repository,
     this.settings,
   });
 
   final CommitRecord commit;
+  final bool isFirst;
+  final bool isLast;
   final SvnRepository? repository;
   final AppSettings? settings;
+
+  @override
+  Widget build(BuildContext context) {
+    final aura = _aura(context);
+    final highlight = isFirst;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: 22,
+              child: CustomPaint(
+                painter: _TimelineRailPainter(
+                  lineColor: aura.border,
+                  nodeColor: highlight ? _stitchPrimaryFixed : aura.border,
+                  nodeGlowColor: highlight
+                      ? _stitchPrimaryFixed.withValues(alpha: 0.85)
+                      : aura.border.withValues(alpha: 0.5),
+                  isFirst: isFirst,
+                  isLast: isLast,
+                  highlightNode: highlight,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: _CommitTile(
+                  commit: commit,
+                  repository: repository,
+                  settings: settings,
+                  highlighted: highlight,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TimelineRailPainter extends CustomPainter {
+  _TimelineRailPainter({
+    required this.lineColor,
+    required this.nodeColor,
+    required this.nodeGlowColor,
+    required this.isFirst,
+    required this.isLast,
+    required this.highlightNode,
+  });
+
+  final Color lineColor;
+  final Color nodeColor;
+  final Color nodeGlowColor;
+  final bool isFirst;
+  final bool isLast;
+  final bool highlightNode;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final centerX = size.width * 0.45;
+    const nodeY = 22.0;
+
+    final linePaint = Paint()
+      ..color = lineColor.withValues(alpha: 0.35)
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+    if (!isFirst) {
+      canvas.drawLine(
+        Offset(centerX, 0),
+        Offset(centerX, nodeY - 5),
+        linePaint,
+      );
+    }
+    if (!isLast) {
+      canvas.drawLine(
+        Offset(centerX, nodeY + 5),
+        Offset(centerX, size.height),
+        linePaint,
+      );
+    }
+
+    if (highlightNode) {
+      final glowPaint = Paint()
+        ..color = nodeGlowColor
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
+      canvas.drawCircle(Offset(centerX, nodeY), 5, glowPaint);
+    }
+
+    final nodePaint = Paint()..color = nodeColor;
+    canvas.drawCircle(Offset(centerX, nodeY), highlightNode ? 4 : 3.5, nodePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _TimelineRailPainter oldDelegate) {
+    return oldDelegate.lineColor != lineColor ||
+        oldDelegate.nodeColor != nodeColor ||
+        oldDelegate.nodeGlowColor != nodeGlowColor ||
+        oldDelegate.isFirst != isFirst ||
+        oldDelegate.isLast != isLast ||
+        oldDelegate.highlightNode != highlightNode;
+  }
+}
+
+class _CommitTile extends StatefulWidget {
+  const _CommitTile({
+    required this.commit,
+    this.repository,
+    this.settings,
+    this.highlighted = false,
+  });
+
+  final CommitRecord commit;
+  final SvnRepository? repository;
+  final AppSettings? settings;
+  final bool highlighted;
 
   @override
   State<_CommitTile> createState() => _CommitTileState();
@@ -2871,36 +3478,177 @@ class _CommitTileState extends State<_CommitTile> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final aura = _aura(context);
     final commit = widget.commit;
+    final isDark = theme.brightness == Brightness.dark;
+    final hl = widget.highlighted;
 
-    return ExpansionTile(
-      tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      collapsedShape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      backgroundColor: _aura(context).surfaceAlt,
-      collapsedBackgroundColor: _aura(context).surfaceAlt,
-      title: Text(
-        commit.message.isEmpty ? '(no message)' : commit.message,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.titleSmall,
+    return Theme(
+      data: theme.copyWith(
+        dividerColor: Colors.transparent,
+        splashColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(isDark ? 0 : 10),
+        child: Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: isDark ? _stitchGlassFill : aura.surface,
+                borderRadius: BorderRadius.circular(isDark ? 0 : 10),
+                border: Border(
+                  left: BorderSide(
+                    width: hl ? 2 : 1,
+                    color: hl
+                        ? _stitchPrimaryFixed
+                        : (isDark
+                            ? _stitchGlassBorder
+                            : aura.border.withValues(alpha: 0.65)),
+                  ),
+                  top: BorderSide(
+                    color: isDark
+                        ? _stitchGlassBorder
+                        : aura.border.withValues(alpha: 0.4),
+                  ),
+                  right: BorderSide(
+                    color: isDark
+                        ? _stitchGlassBorder
+                        : aura.border.withValues(alpha: 0.4),
+                  ),
+                  bottom: BorderSide(
+                    color: isDark
+                        ? _stitchGlassBorder
+                        : aura.border.withValues(alpha: 0.4),
+                  ),
+                ),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: ExpansionTile(
+      tilePadding: const EdgeInsets.fromLTRB(14, 6, 12, 6),
+      childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+      collapsedShape: const RoundedRectangleBorder(),
+      shape: const RoundedRectangleBorder(),
+      backgroundColor: Colors.transparent,
+      collapsedBackgroundColor: Colors.transparent,
+      iconColor: aura.textMuted,
+      collapsedIconColor: aura.textMuted,
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'r${commit.revision}',
+                style: GoogleFonts.jetBrainsMono(
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: hl ? _stitchPrimaryFixed : aura.textMuted,
+                  letterSpacing: 0.2,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                _shortCommitDate(commit.date),
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 11,
+                  letterSpacing: 0.55,
+                  color: aura.textSubtle,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            commit.message.isEmpty ? '(no message)' : commit.message,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: aura.text,
+              height: 1.35,
+            ),
+          ),
+        ],
       ),
       subtitle: Padding(
-        padding: const EdgeInsets.only(top: 6),
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 6,
-          crossAxisAlignment: WrapCrossAlignment.center,
+        padding: const EdgeInsets.only(top: 8),
+        child: Row(
           children: [
-            _RevisionText(revision: commit.revision),
-            _SmallChip(label: 'author', value: commit.author),
-            _SmallChip(
-                label: 'ticket',
-                value: commit.ticketId.isEmpty ? '-' : commit.ticketId),
-            _SmallChip(
-                label: 'paths', value: commit.changedPaths.length.toString()),
+            Container(
+              width: 18,
+              height: 18,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: aura.surfaceSoft,
+                border: Border.all(
+                  color: aura.border.withValues(alpha: 0.6),
+                ),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                commit.author.isEmpty
+                    ? '?'
+                    : commit.author.substring(0, 1).toUpperCase(),
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  color: aura.textMuted,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                commit.author.isEmpty ? 'unknown' : commit.author,
+                style: TextStyle(
+                  fontSize: 11,
+                  letterSpacing: 0.4,
+                  color: aura.textSubtle,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (commit.ticketId.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: aura.violet.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  commit.ticketId,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: aura.violet,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: aura.surfaceSoft,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: aura.border.withValues(alpha: 0.5),
+                ),
+              ),
+              child: Text(
+                '${commit.changedPaths.length} paths',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: aura.textMuted,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -2934,7 +3682,7 @@ class _CommitTileState extends State<_CommitTile> {
                         alignment: Alignment.center,
                         padding: const EdgeInsets.symmetric(vertical: 2),
                         decoration: BoxDecoration(
-                          color: _actionColor(path.action).withOpacity(0.12),
+                          color: _actionColor(path.action).withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
@@ -3009,6 +3757,11 @@ class _CommitTileState extends State<_CommitTile> {
             '${commit.changedPaths.length - 30} more paths are hidden',
           )),
       ],
+            ),
+          ),
+        ],
+      ),
+    ),
     );
   }
 }
@@ -3037,7 +3790,7 @@ class _RevisionDiffDialog extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     backgroundColor:
-                        theme.colorScheme.primary.withOpacity(0.12),
+                        theme.colorScheme.primary.withValues(alpha: 0.12),
                     child: Icon(
                       Icons.difference_rounded,
                       color: theme.colorScheme.primary,
@@ -3348,7 +4101,7 @@ class _DiffStatPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
+        color: color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -3570,7 +4323,7 @@ class _DiffLineRange extends StatelessWidget {
       width: 70,
       alignment: Alignment.centerRight,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      color: Colors.black.withOpacity(0.03),
+      color: Colors.black.withValues(alpha: 0.03),
       child: Text(
         text,
         textAlign: TextAlign.right,
@@ -3592,46 +4345,82 @@ String _displayDiffText(String text) {
   return text;
 }
 
+BoxDecoration _dashboardStatStripDecoration(
+  BuildContext context, {
+  required Color accentBorder,
+}) {
+  final theme = Theme.of(context);
+  final isDark = theme.brightness == Brightness.dark;
+  final edge = isDark ? _stitchGlassBorder : _aura(context).border;
+  return BoxDecoration(
+    color: isDark ? _stitchGlassFill : _aura(context).surfaceAlt,
+    borderRadius: BorderRadius.circular(4),
+    border: Border(
+      left: BorderSide(color: accentBorder, width: 3),
+      top: BorderSide(color: edge, width: 1),
+      right: BorderSide(color: edge, width: 1),
+      bottom: BorderSide(color: edge, width: 1),
+    ),
+  );
+}
+
 class _MetricCard extends StatelessWidget {
   const _MetricCard({
     required this.label,
     required this.value,
     required this.icon,
+    required this.accentBorder,
   });
 
   final String label;
   final String value;
   final IconData icon;
+  final Color accentBorder;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final aura = _aura(context);
 
     return Container(
-      width: 132,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: _aura(context).surfaceAlt,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _aura(context).border),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: _dashboardStatStripDecoration(
+        context,
+        accentBorder: accentBorder,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Icon(icon, color: theme.colorScheme.primary, size: 19),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w900,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: value,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  TextSpan(
+                    text: ' · ',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: aura.textMuted),
+                  ),
+                  TextSpan(
+                    text: label,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: aura.textMuted,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-          ),
-          Text(
-            label,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: _aura(context).textMuted),
           ),
         ],
       ),
@@ -3644,16 +4433,21 @@ class _BackendStatusCard extends StatelessWidget {
     required this.status,
     required this.onCheck,
     required this.onStart,
+    required this.accentBorder,
   });
 
   final String status;
   final Future<void> Function() onCheck;
   final Future<void> Function() onStart;
+  final Color accentBorder;
 
   @override
   Widget build(BuildContext context) {
     final summary = _backendStatusSummary(status);
     final style = _backendStatusStyle(summary);
+    final theme = Theme.of(context);
+    final aura = _aura(context);
+    final backendLabel = _t(context, '後端', 'Backend');
 
     return PopupMenuButton<String>(
       tooltip: status,
@@ -3677,38 +4471,51 @@ class _BackendStatusCard extends StatelessWidget {
       child: Tooltip(
         message:
             '$status\n\n${_t(context, '點擊可重新檢查或啟動本地後端。', 'Click to recheck or start the local backend.')}',
-        child: Container(
-          width: 154,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: style.color.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: style.color.withOpacity(0.35)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(style.icon, color: style.color, size: 24),
-              const SizedBox(height: 8),
-              Text(
-                _localizedBackendSummary(context, summary),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: style.color,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 16,
+        child: SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: _dashboardStatStripDecoration(
+              context,
+              accentBorder: accentBorder,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Icon(style.icon, color: style.color, size: 19),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: _localizedBackendSummary(context, summary),
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: style.color,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        TextSpan(
+                          text: ' · ',
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: aura.textMuted),
+                        ),
+                        TextSpan(
+                          text: backendLabel,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: aura.textMuted,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-              ),
-              Text(
-                'Backend',
-                style: TextStyle(
-                  color: _aura(context).textMuted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -3860,7 +4667,7 @@ class _StatusPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -3917,7 +4724,7 @@ class _ErrorBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.red.withOpacity(0.08),
+        color: Colors.red.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -3938,8 +4745,12 @@ class _EmptyDataCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final panelBg = theme.brightness == Brightness.dark
+        ? _cyberBackground
+        : _aura(context).surfaceAlt;
 
-    return Card(
+    return Material(
+      color: panelBg,
       child: Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
@@ -3972,144 +4783,6 @@ class _EmptyDataCard extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _CyberSpaceBackground extends StatefulWidget {
-  const _CyberSpaceBackground();
-
-  @override
-  State<_CyberSpaceBackground> createState() => _CyberSpaceBackgroundState();
-}
-
-class _CyberSpaceBackgroundState extends State<_CyberSpaceBackground>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 18),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return CustomPaint(
-          painter: _CyberSpacePainter(_controller.value),
-        );
-      },
-    );
-  }
-}
-
-class _DayAuraBackground extends StatelessWidget {
-  const _DayAuraBackground();
-
-  @override
-  Widget build(BuildContext context) {
-    return const DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFEFF6FF), Color(0xFFF8FAFC), Color(0xFFE0F2FE)],
-        ),
-      ),
-    );
-  }
-}
-
-class _CyberSpacePainter extends CustomPainter {
-  const _CyberSpacePainter(this.progress);
-
-  final double progress;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    final background = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          Color(0xFF020617),
-          Color(0xFF06122A),
-          Color(0xFF160C2D),
-          Color(0xFF020617),
-        ],
-      ).createShader(rect);
-    canvas.drawRect(rect, background);
-
-    _drawNebula(canvas, size);
-    _drawGrid(canvas, size);
-    _drawStars(canvas, size);
-  }
-
-  void _drawNebula(Canvas canvas, Size size) {
-    final orbit = progress * math.pi * 2;
-    final cyanCenter = Offset(
-      size.width * (0.20 + math.sin(orbit) * 0.03),
-      size.height * (0.18 + math.cos(orbit * 0.7) * 0.04),
-    );
-    final violetCenter = Offset(
-      size.width * (0.78 + math.cos(orbit * 0.8) * 0.04),
-      size.height * (0.72 + math.sin(orbit * 0.9) * 0.05),
-    );
-    for (final item in [
-      (cyanCenter, _cyberAccent.withOpacity(0.28), size.shortestSide * 0.42),
-      (violetCenter, _cyberViolet.withOpacity(0.24), size.shortestSide * 0.48),
-    ]) {
-      final paint = Paint()
-        ..shader = RadialGradient(
-          colors: [item.$2, Colors.transparent],
-        ).createShader(Rect.fromCircle(center: item.$1, radius: item.$3));
-      canvas.drawCircle(item.$1, item.$3, paint);
-    }
-  }
-
-  void _drawGrid(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = _cyberAccent.withOpacity(0.065)
-      ..strokeWidth = 1;
-    const spacing = 56.0;
-    final offset = progress * spacing;
-    for (double x = -spacing + offset; x < size.width; x += spacing) {
-      canvas.drawLine(
-          Offset(x, 0), Offset(x + size.width * 0.18, size.height), paint);
-    }
-    for (double y = -spacing + offset; y < size.height; y += spacing) {
-      canvas.drawLine(
-          Offset(0, y), Offset(size.width, y + size.height * 0.08), paint);
-    }
-  }
-
-  void _drawStars(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.white.withOpacity(0.45);
-    for (var i = 0; i < 70; i++) {
-      final seed = i * 37.23;
-      final x = ((math.sin(seed) * 0.5 + 0.5) * size.width);
-      final baseY = ((math.cos(seed * 1.7) * 0.5 + 0.5) * size.height);
-      final y = (baseY + progress * (18 + i % 9)) % size.height;
-      final pulse = 0.55 + 0.45 * math.sin(progress * math.pi * 2 + i);
-      canvas.drawCircle(Offset(x, y), 0.7 + pulse * 1.2, paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _CyberSpacePainter oldDelegate) {
-    return oldDelegate.progress != progress;
   }
 }
 
@@ -4420,12 +5093,17 @@ int? _asInt(Object? value) {
   return int.tryParse(value?.toString() ?? '');
 }
 
-String _joinPath(String first, String second) {
+String _joinPath(String first, String second, [String? third, String? fourth]) {
   final separator = Platform.pathSeparator;
-  if (first.endsWith(separator)) {
-    return '$first$second';
-  }
-  return '$first$separator$second';
+  final segments = <String>[
+    first,
+    second,
+    if (third != null) third,
+    if (fourth != null) fourth,
+  ];
+  return segments.reduce(
+    (a, b) => a.endsWith(separator) ? '$a$b' : '$a$separator$b',
+  );
 }
 
 String _fileName(String path) {
