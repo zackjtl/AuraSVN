@@ -1,4 +1,18 @@
-﻿part of 'main.dart';
+﻿import 'package:aura_svn/app_theme.dart';
+import 'package:aura_svn/branch_map_edge_renderer.dart';
+import 'package:aura_svn/branch_map_painter.dart';
+import 'package:aura_svn/language_scope.dart';
+import 'package:aura_svn/models/app_data.dart';
+import 'package:aura_svn/models/branch_node.dart';
+import 'package:aura_svn/models/commit_record.dart';
+import 'package:aura_svn/models/svn_repository.dart';
+import 'package:aura_svn/notes_store.dart';
+import 'package:aura_svn/utils/branch_paths.dart';
+import 'package:aura_svn/widgets/markdown_styles.dart';
+import 'package:aura_svn/widgets/misc_widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:graphview/GraphView.dart' as graphview;
 
 class BranchMapView extends StatefulWidget {
   const BranchMapView({
@@ -22,12 +36,12 @@ class _BranchMapViewState extends State<BranchMapView> {
   final TransformationController _transformationController =
       TransformationController();
 
-  late _BranchGraphModel _model;
+  late BranchGraphModel _model;
 
   @override
   void initState() {
     super.initState();
-    _model = _BranchGraphModel.fromData(widget.data);
+    _model = BranchGraphModel.fromData(widget.data);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusPath(_model.latestBranchPath ?? _model.rootPath, scale: 0.85);
     });
@@ -37,7 +51,7 @@ class _BranchMapViewState extends State<BranchMapView> {
   void didUpdateWidget(covariant BranchMapView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.data != widget.data) {
-      _model = _BranchGraphModel.fromData(widget.data);
+      _model = BranchGraphModel.fromData(widget.data);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _focusPath(_model.latestBranchPath ?? _model.rootPath, scale: 0.85);
       });
@@ -79,12 +93,12 @@ class _BranchMapViewState extends State<BranchMapView> {
     final theme = Theme.of(context);
 
     if (_model.paths.isEmpty) {
-      return const _EmptyDataCard();
+      return const EmptyDataCard();
     }
 
     final mapBg = theme.brightness == Brightness.dark
-        ? _cyberBackground
-        : _aura(context).surfaceAlt;
+        ? cyberMainPanel
+        : aura(context).surfaceAlt;
 
     return Material(
       color: mapBg,
@@ -92,7 +106,7 @@ class _BranchMapViewState extends State<BranchMapView> {
         children: [
           Positioned.fill(
             child: CustomPaint(
-              painter: BranchMapBackgroundPainter(colors: _aura(context)),
+              painter: BranchMapBackgroundPainter(colors: aura(context)),
             ),
           ),
           Positioned.fill(
@@ -108,21 +122,22 @@ class _BranchMapViewState extends State<BranchMapView> {
                   graph: _model.graph,
                   algorithm: graphview.BuchheimWalkerAlgorithm(
                     _model.configuration,
-                    graphview.TreeEdgeRenderer(_model.configuration),
+                    SmoothTreeEdgeRenderer(_model.configuration),
                   ),
                   paint: Paint()
                     ..color = const Color(0xFF94A3B8)
                     ..strokeWidth = 1.6
-                    ..style = PaintingStyle.stroke,
+                    ..style = PaintingStyle.stroke
+                    ..strokeJoin = StrokeJoin.round,
                   animated: false,
                   builder: (node) {
                     final path = node.key?.value.toString() ?? '';
                     final branch = _model.nodeFor(path);
-                    return _BranchMapNode(
+                    return BranchMapNode(
                       path: path,
                       node: branch,
-                      isRoot: _isTrunkPath(path),
-                      commitCount: _filterCommitsForBranch(
+                      isRoot: isTrunkPath(path),
+                      commitCount: filterCommitsForBranch(
                         widget.data,
                         path,
                         branch,
@@ -144,7 +159,7 @@ class _BranchMapViewState extends State<BranchMapView> {
           Positioned(
             top: 18,
             left: 18,
-            child: _BranchMapTitle(
+            child: BranchMapTitle(
               repository: widget.repository,
               nodeCount: _model.paths.length,
               latestPath: _model.latestBranchPath,
@@ -158,14 +173,14 @@ class _BranchMapViewState extends State<BranchMapView> {
               children: [
                 FloatingActionButton.small(
                   heroTag: 'reset-zoom-${widget.repository.name}',
-                  tooltip: _t(context, '重置縮放', 'Reset Zoom'),
+                  tooltip: t(context, '重置縮放', 'Reset Zoom'),
                   onPressed: _resetZoom,
                   child: const Icon(Icons.center_focus_strong_rounded),
                 ),
                 const SizedBox(height: 10),
                 FloatingActionButton.small(
                   heroTag: 'go-trunk-${widget.repository.name}',
-                  tooltip: _t(context, '回到主線', 'Go to Trunk'),
+                  tooltip: t(context, '回到主線', 'Go to Trunk'),
                   backgroundColor: theme.colorScheme.primary,
                   foregroundColor: theme.colorScheme.onPrimary,
                   onPressed: _goToTrunk,
@@ -180,7 +195,7 @@ class _BranchMapViewState extends State<BranchMapView> {
   }
 
   void _showBranchLog(String path, BranchNode? node) {
-    final commits = _filterCommitsForBranch(widget.data, path, node);
+    final commits = filterCommitsForBranch(widget.data, path, node);
     final languageCode = LanguageScope.of(context);
     showModalBottomSheet<void>(
       context: context,
@@ -192,7 +207,7 @@ class _BranchMapViewState extends State<BranchMapView> {
       builder: (context) {
         return LanguageScope(
           languageCode: languageCode,
-          child: _BranchLogSheet(
+          child: BranchLogSheet(
             repository: widget.repository,
             settings: widget.settings,
             path: path,
@@ -205,8 +220,8 @@ class _BranchMapViewState extends State<BranchMapView> {
   }
 }
 
-class _BranchGraphModel {
-  _BranchGraphModel({
+class BranchGraphModel {
+  BranchGraphModel({
     required this.graph,
     required this.configuration,
     required this.paths,
@@ -219,7 +234,7 @@ class _BranchGraphModel {
         _depths = depths,
         _orders = orders;
 
-  factory _BranchGraphModel.fromData(AppData data) {
+  factory BranchGraphModel.fromData(AppData data) {
     final allPaths = <String>{};
     final childrenByParent = <String, Set<String>>{};
     final parentByChild = <String, String>{};
@@ -239,7 +254,7 @@ class _BranchGraphModel {
       }
     }
 
-    final rootPath = _pickRootPath(allPaths, parentByChild);
+    final rootPath = pickRootPath(allPaths, parentByChild);
     if (rootPath != null) {
       allPaths.add(rootPath);
       final orphanRoots = allPaths
@@ -300,7 +315,7 @@ class _BranchGraphModel {
     }
 
     final latestBranchPath = data.topology.entries
-        .where((entry) => !_isTrunkPath(entry.key))
+        .where((entry) => !isTrunkPath(entry.key))
         .fold<MapEntry<String, BranchNode>?>(
       null,
       (latest, entry) {
@@ -317,7 +332,7 @@ class _BranchGraphModel {
       ..orientation =
           graphview.BuchheimWalkerConfiguration.ORIENTATION_TOP_BOTTOM;
 
-    return _BranchGraphModel(
+    return BranchGraphModel(
       graph: graph,
       configuration: configuration,
       paths: allPaths.toList()..sort(),
@@ -345,8 +360,8 @@ class _BranchGraphModel {
   int orderFor(String path) => _orders[path] ?? 0;
 }
 
-class _BranchMapNode extends StatelessWidget {
-  const _BranchMapNode({
+class BranchMapNode extends StatelessWidget {
+  const BranchMapNode({
     required this.path,
     required this.node,
     required this.isRoot,
@@ -363,10 +378,17 @@ class _BranchMapNode extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final aura = _aura(context);
-    final fillColor = isRoot ? const Color(0xFF1E3A8A) : aura.surfaceAlt;
-    final textColor = isRoot ? Colors.white : aura.text;
-    final borderColor = isRoot ? const Color(0xFF1D4ED8) : aura.accent;
+    final auraTokens = aura(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final fillColor = isRoot
+        ? (isDark ? const Color(0xFF1E3A8A) : const Color(0xFFEFF6FF))
+        : auraTokens.surfaceAlt;
+    final textColor = isRoot
+        ? (isDark ? Colors.white : const Color(0xFF1E3A8A))
+        : auraTokens.text;
+    final borderColor = isRoot
+        ? (isDark ? const Color(0xFF1D4ED8) : const Color(0xFF2563EB))
+        : auraTokens.accent;
 
     return Material(
       color: Colors.transparent,
@@ -382,9 +404,9 @@ class _BranchMapNode extends StatelessWidget {
             border: Border.all(color: borderColor, width: 1.4),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.10),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
+                color: Colors.black.withOpacity(isDark ? 0.10 : 0.06),
+                blurRadius: isDark ? 16 : 12,
+                offset: Offset(0, isDark ? 8 : 6),
               ),
             ],
           ),
@@ -399,17 +421,21 @@ class _BranchMapNode extends StatelessWidget {
                         ? Icons.account_tree_rounded
                         : Icons.call_split_rounded,
                     size: 18,
-                    color: isRoot ? Colors.white : theme.colorScheme.primary,
+                    color: isRoot
+                        ? (isDark
+                            ? Colors.white
+                            : theme.colorScheme.primary)
+                        : theme.colorScheme.primary,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      _branchName(path),
+                      mapBranchName(path),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.titleSmall?.copyWith(
                         color: textColor,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -430,11 +456,11 @@ class _BranchMapNode extends StatelessWidget {
                 spacing: 6,
                 runSpacing: 6,
                 children: [
-                  _MapNodeChip(
+                  MapNodeChip(
                     text: 'origin r${node?.originRev?.toString() ?? '-'}',
                     isRoot: isRoot,
                   ),
-                  _MapNodeChip(
+                  MapNodeChip(
                     text: '$commitCount commits',
                     isRoot: isRoot,
                   ),
@@ -448,8 +474,8 @@ class _BranchMapNode extends StatelessWidget {
   }
 }
 
-class _MapNodeChip extends StatelessWidget {
-  const _MapNodeChip({
+class MapNodeChip extends StatelessWidget {
+  const MapNodeChip({
     required this.text,
     required this.isRoot,
   });
@@ -459,28 +485,34 @@ class _MapNodeChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: isRoot
-            ? Colors.white.withOpacity(0.15)
-            : _aura(context).surfaceSoft,
+            ? (isDark
+                ? Colors.white.withOpacity(0.15)
+                : aura(context).surface)
+            : aura(context).surfaceSoft,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         text,
         style: TextStyle(
-          color: isRoot ? Colors.white : _aura(context).textMuted,
+          color: isRoot
+              ? (isDark ? Colors.white : aura(context).textMuted)
+              : aura(context).textMuted,
           fontSize: 11,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
   }
 }
 
-class _BranchMapTitle extends StatelessWidget {
-  const _BranchMapTitle({
+class BranchMapTitle extends StatelessWidget {
+  const BranchMapTitle({
     required this.repository,
     required this.nodeCount,
     required this.latestPath,
@@ -493,17 +525,21 @@ class _BranchMapTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final a = aura(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final fillOpacity = isDark ? 0.78 : 0.86;
+    final borderOpacity = isDark ? 0.55 : 0.62;
 
     return Container(
       width: 340,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: _aura(context).surface,
+        color: a.surface.withOpacity(fillOpacity),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: _aura(context).border),
+        border: Border.all(color: a.border.withOpacity(borderOpacity)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withOpacity(isDark ? 0.12 : 0.06),
             blurRadius: 18,
             offset: const Offset(0, 10),
           ),
@@ -514,34 +550,27 @@ class _BranchMapTitle extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            _t(context, '分支視覺地圖', 'Visual Branch Map'),
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _t(
+            t(
               context,
               '${repository.name} · $nodeCount 個節點',
               '${repository.name} · $nodeCount nodes',
             ),
             style: theme.textTheme.bodyMedium
-                ?.copyWith(color: _aura(context).textMuted),
+                ?.copyWith(color: theme.colorScheme.primary),
           ),
           if (latestPath != null) ...[
             const SizedBox(height: 8),
             Text(
-              _t(
+              t(
                 context,
-                '自動聚焦最新分支：${_branchName(latestPath!)}',
-                'Auto-focused latest branch: ${_branchName(latestPath!)}',
+                '自動聚焦最新分支：${mapBranchName(latestPath!)}',
+                'Auto-focused latest branch: ${mapBranchName(latestPath!)}',
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.w700,
+                color: aura(context).textMuted,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
@@ -551,8 +580,8 @@ class _BranchMapTitle extends StatelessWidget {
   }
 }
 
-class _BranchLogSheet extends StatelessWidget {
-  const _BranchLogSheet({
+class BranchLogSheet extends StatelessWidget {
+  const BranchLogSheet({
     required this.repository,
     required this.settings,
     required this.path,
@@ -580,7 +609,7 @@ class _BranchLogSheet extends StatelessWidget {
               CircleAvatar(
                 backgroundColor: theme.colorScheme.primary.withOpacity(0.12),
                 child: Icon(
-                  _isTrunkPath(path)
+                  isTrunkPath(path)
                       ? Icons.account_tree_rounded
                       : Icons.call_split_rounded,
                   color: theme.colorScheme.primary,
@@ -592,9 +621,9 @@ class _BranchLogSheet extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _branchName(path),
+                      mapBranchName(path),
                       style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     SelectableText(path),
@@ -611,15 +640,15 @@ class _BranchLogSheet extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _SmallChip(
+              SmallChip(
                 label: 'origin_rev',
                 value: node?.originRev?.toString() ?? '-',
               ),
-              _SmallChip(
+              SmallChip(
                 label: 'parent_rev',
                 value: node?.parentRev?.toString() ?? '-',
               ),
-              _SmallChip(label: 'kind', value: node?.kind ?? 'root'),
+              SmallChip(label: 'kind', value: node?.kind ?? 'root'),
             ],
           ),
           const SizedBox(height: 16),
@@ -632,7 +661,7 @@ class _BranchLogSheet extends StatelessWidget {
           Expanded(
             child: commits.isEmpty
                 ? Center(
-                    child: Text(_t(
+                    child: Text(t(
                       context,
                       '找不到此分支路徑相關的 commit。',
                       'No commits found for this branch path.',
@@ -728,7 +757,7 @@ class _BranchNoteEditorState extends State<BranchNoteEditor> {
     });
 
     try {
-      final note = await _loadBranchNote(
+      final note = await loadBranchNote(
         settings: widget.settings,
         repository: widget.repository,
         branchPath: widget.branchPath,
@@ -762,7 +791,7 @@ class _BranchNoteEditorState extends State<BranchNoteEditor> {
     });
 
     try {
-      final note = await _saveBranchNote(
+      final note = await saveBranchNote(
         settings: widget.settings,
         repository: widget.repository,
         branchPath: widget.branchPath,
@@ -798,9 +827,9 @@ class _BranchNoteEditorState extends State<BranchNoteEditor> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: _aura(context).surfaceAlt,
+        color: aura(context).surfaceAlt,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _aura(context).border),
+        border: Border.all(color: aura(context).border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -810,9 +839,9 @@ class _BranchNoteEditorState extends State<BranchNoteEditor> {
               Icon(Icons.edit_note_rounded, color: theme.colorScheme.primary),
               const SizedBox(width: 8),
               Text(
-                _t(context, 'Markdown 筆記', 'Markdown Note'),
+                t(context, 'Markdown 筆記', 'Markdown Note'),
                 style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const Spacer(),
@@ -820,15 +849,15 @@ class _BranchNoteEditorState extends State<BranchNoteEditor> {
                 segments: [
                   ButtonSegment(
                     value: _MarkdownNoteMode.both,
-                    label: Text(_t(context, '雙欄', 'Both')),
+                    label: Text(t(context, '雙欄', 'Both')),
                   ),
                   ButtonSegment(
                     value: _MarkdownNoteMode.edit,
-                    label: Text(_t(context, '編輯', 'Edit')),
+                    label: Text(t(context, '編輯', 'Edit')),
                   ),
                   ButtonSegment(
                     value: _MarkdownNoteMode.preview,
-                    label: Text(_t(context, '預覽', 'Preview')),
+                    label: Text(t(context, '預覽', 'Preview')),
                   ),
                 ],
                 selected: {_mode},
@@ -852,22 +881,22 @@ class _BranchNoteEditorState extends State<BranchNoteEditor> {
                     : const Icon(Icons.save_rounded),
                 label: Text(
                   _isSaving
-                      ? _t(context, '儲存中', 'Saving')
-                      : _t(context, '儲存筆記', 'Save Note'),
+                      ? t(context, '儲存中', 'Saving')
+                      : t(context, '儲存筆記', 'Save Note'),
                 ),
               ),
             ],
           ),
           if (_noteFile != null) ...[
             const SizedBox(height: 8),
-            _InfoLine(label: _t(context, '檔案', 'File'), value: _noteFile!),
+            InfoLine(label: t(context, '檔案', 'File'), value: _noteFile!),
           ],
           if (_status != null) ...[
             const SizedBox(height: 8),
             Text(
               _localizedBranchNoteStatus(context, _status!),
               style: theme.textTheme.bodySmall
-                  ?.copyWith(color: _aura(context).textMuted),
+                  ?.copyWith(color: aura(context).textMuted),
             ),
           ],
           if (_error != null) ...[
@@ -895,7 +924,7 @@ class _BranchNoteEditorState extends State<BranchNoteEditor> {
                   OutlinedButton.icon(
                     onPressed: _isLoading ? null : _load,
                     icon: const Icon(Icons.refresh_rounded, size: 16),
-                    label: Text(_t(context, '重試', 'Retry')),
+                    label: Text(t(context, '重試', 'Retry')),
                   ),
                 ],
               ),
@@ -924,7 +953,7 @@ class _BranchNoteEditorState extends State<BranchNoteEditor> {
       keyboardType: TextInputType.multiline,
       textAlignVertical: TextAlignVertical.top,
       decoration: InputDecoration(
-        hintText: _t(
+        hintText: t(
           context,
           '在這裡撰寫此分支的 Markdown 筆記...',
           'Write Markdown notes for this branch here...',
@@ -940,15 +969,15 @@ class _BranchNoteEditorState extends State<BranchNoteEditor> {
     final preview = Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: _aura(context).surfaceAlt,
+        color: aura(context).surfaceAlt,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _aura(context).border),
+        border: Border.all(color: aura(context).border),
       ),
       child: Markdown(
         data: _controller.text,
         selectable: true,
         padding: const EdgeInsets.all(14),
-        styleSheet: _auraMarkdownStyle(context),
+        styleSheet: auraMarkdownStyle(context),
       ),
     );
 
@@ -1004,9 +1033,9 @@ class _BranchLogTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _aura(context).surfaceAlt,
+        color: aura(context).surfaceAlt,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _aura(context).border),
+        border: Border.all(color: aura(context).border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1026,7 +1055,7 @@ class _BranchLogTile extends StatelessWidget {
                   commit.message.isEmpty ? '(no message)' : commit.message,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -1036,13 +1065,13 @@ class _BranchLogTile extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _SmallChip(label: 'revision', value: commit.revision.toString()),
-              _SmallChip(label: 'author', value: commit.author),
-              _SmallChip(
+              SmallChip(label: 'revision', value: commit.revision.toString()),
+              SmallChip(label: 'author', value: commit.author),
+              SmallChip(
                 label: 'ticket',
                 value: commit.ticketId.isEmpty ? '-' : commit.ticketId,
               ),
-              _SmallChip(label: 'date', value: commit.date),
+              SmallChip(label: 'date', value: commit.date),
             ],
           ),
           if (matchedPaths.isNotEmpty) ...[
@@ -1065,7 +1094,7 @@ class _BranchLogTile extends StatelessWidget {
   }
 }
 
-List<CommitRecord> _filterCommitsForBranch(
+List<CommitRecord> filterCommitsForBranch(
   AppData data,
   String branchPath,
   BranchNode? node,
@@ -1089,13 +1118,13 @@ List<CommitRecord> _filterCommitsForBranch(
   return result;
 }
 
-String? _pickRootPath(Set<String> paths, Map<String, String> parentByChild) {
+String? pickRootPath(Set<String> paths, Map<String, String> parentByChild) {
   final parentless = paths.where((path) => !parentByChild.containsKey(path));
-  final trunk = parentless.where(_isTrunkPath).toList()..sort();
+  final trunk = parentless.where(isTrunkPath).toList()..sort();
   if (trunk.isNotEmpty) {
     return trunk.first;
   }
-  final anyTrunk = paths.where(_isTrunkPath).toList()..sort();
+  final anyTrunk = paths.where(isTrunkPath).toList()..sort();
   if (anyTrunk.isNotEmpty) {
     return anyTrunk.first;
   }
@@ -1103,11 +1132,8 @@ String? _pickRootPath(Set<String> paths, Map<String, String> parentByChild) {
   return fallback.isEmpty ? null : fallback.first;
 }
 
-bool _isTrunkPath(String path) {
-  return path == '/trunk' || path.contains('/trunk');
-}
 
-String _branchName(String path) {
+String mapBranchName(String path) {
   final parts = path.split('/').where((part) => part.isNotEmpty).toList();
   if (parts.isEmpty) {
     return path;

@@ -12,7 +12,18 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+# 本 repo 的後端在 scripts/ 下；舊版 SVNBranchViewer 則在專案根。輸出與 .runtime_configs 一律以「專案根」為準。
+if os.path.basename(_THIS_DIR).lower() == "scripts":
+    PROJECT_ROOT = os.path.normpath(os.path.join(_THIS_DIR, ".."))
+else:
+    PROJECT_ROOT = _THIS_DIR
+_SCRIPTS_LOADER = os.path.join(PROJECT_ROOT, "scripts", "svn_to_ai_loader.py")
+SVN_TO_AI_LOADER = (
+    _SCRIPTS_LOADER
+    if os.path.isfile(_SCRIPTS_LOADER)
+    else os.path.join(PROJECT_ROOT, "svn_to_ai_loader.py")
+)
 DEFAULT_OUTPUT_ROOT = os.path.join(PROJECT_ROOT, "svn_ai_output")
 DEFAULT_REPOSITORIES = {
     "ET1288_AP": "https://svn1.embestor.local/svn/ET1288_AP",
@@ -122,6 +133,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return
             if self.path == "/api/tools/run":
                 self._send_json(run_tool(payload))
+                return
+            if self.path == "/api/ollama/test":
+                self._send_json(test_ollama_settings(payload))
                 return
             self._send_json({"error": "not found"}, status=404)
         except Exception as exc:
@@ -391,7 +405,10 @@ def generate_project_report(payload, progress=None):
         branch_notes=branch_notes,
     )
     emit(f"送出 Ollama 請求，model={model}，等待模型回應")
-    report = call_ollama_chat(ollama_base_url, model, prompt)
+    api_key_for_chat = _ollama_api_key_from_client_payload(payload)
+    report = call_ollama_chat(
+        ollama_base_url, model, prompt, api_key_for_request=api_key_for_chat
+    )
     emit(f"Ollama 已回應，報告長度 {len(report)} 字元")
     emit("儲存報告 Markdown 與 history index")
     report_entry = save_project_report(
@@ -440,8 +457,10 @@ def build_project_report_prompt(
 
     prompt_related_commits = prompt_related_commits or []
     branch_notes = branch_notes or []
+    repo_svn_url = repo_url(repo)
     context = {
         "repo": repo,
+        "repo_svn_url": repo_svn_url,
         "user_prompt": user_prompt,
         "summary": summary,
         "branches": compact_branches[:120],
@@ -461,6 +480,7 @@ def build_project_report_prompt(
     return (
         "你是內網 SVN 專案分析助理。請根據下列 JSON 產生繁體中文 Markdown 專案級報告。\n"
         "要求：\n"
+        "0. 報告開頭請用一小段列出 JSON 中的 `repo`（倉儲識別名）與 `repo_svn_url`（SVN 根 URL，若為 null 則註明未設定）。\n"
         "1. 摘要 repo 目前分支狀態與近期開發重點。\n"
         "2. 列出重要分支、長期風險與建議追蹤項目。\n"
         "3. 引用 revision 時必須使用資料中存在的 revision。\n"
@@ -553,7 +573,78 @@ def extract_prompt_terms(user_prompt):
     return terms[:12]
 
 
-def call_ollama_chat(base_url, model, prompt):
+def _ollama_api_key_from_client_payload(payload):
+    """若 payload 含 ollama_api_key，使用客戶端值（可為空字串）；否則回傳 None 表示改讀後端 app_settings。"""
+    if "ollama_api_key" not in payload:
+        return None
+    raw = payload.get("ollama_api_key")
+    if isinstance(raw, str):
+        return raw.strip()
+    return ""
+
+
+def _ollama_headers_for_key(api_key):
+    headers = {"Content-Type": "application/json"}
+    if not isinstance(api_key, str):
+        return headers
+    key = api_key.strip()
+    if not key:
+        return headers
+    header_name = os.environ.get("OLLAMA_API_KEY_HEADER", "Authorization").strip()
+    if header_name.lower() == "authorization":
+        headers[header_name] = f"Bearer {key}"
+    else:
+        headers[header_name] = key
+    return headers
+
+
+def test_ollama_settings(payload):
+    base_url = require_text(payload, "ollama_base_url")
+    model = require_text(payload, "model")
+    raw_key = payload.get("api_key")
+    api_key = raw_key.strip() if isinstance(raw_key, str) else ""
+
+    chat_url = ollama_api_url(base_url, "chat")
+    body = {
+        "model": model,
+        "stream": False,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You answer briefly in one short phrase.",
+            },
+            {"role": "user", "content": "Reply with exactly: pong"},
+        ],
+        "options": {"num_predict": 32},
+    }
+    request = urllib.request.Request(
+        chat_url,
+        data=json.dumps(body).encode("utf-8"),
+        headers=_ollama_headers_for_key(api_key),
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            decoded = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        detail = body.strip() or exc.reason
+        raise RuntimeError(f"Ollama request failed: HTTP {exc.code} {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Ollama request failed: {exc}") from exc
+
+    content = decoded.get("message", {}).get("content", "").strip()
+    preview = content[:200] if content else "(empty reply)"
+    return {
+        "ok": True,
+        "reply_preview": preview,
+        "model": model,
+        "ollama_chat_url": chat_url,
+    }
+
+
+def call_ollama_chat(base_url, model, prompt, *, api_key_for_request=None):
+    """api_key_for_request: None 時從後端 app_settings 讀取；否則用該字串（可為空）組 Authorization。"""
     payload = {
         "model": model,
         "stream": False,
@@ -562,14 +653,11 @@ def call_ollama_chat(base_url, model, prompt):
             {"role": "user", "content": prompt},
         ],
     }
-    headers = {"Content-Type": "application/json"}
-    api_key = get_ollama_api_key()
-    if api_key:
-        header_name = os.environ.get("OLLAMA_API_KEY_HEADER", "Authorization").strip()
-        if header_name.lower() == "authorization":
-            headers[header_name] = f"Bearer {api_key}"
-        else:
-            headers[header_name] = api_key
+    if api_key_for_request is None:
+        key = get_ollama_api_key()
+    else:
+        key = api_key_for_request
+    headers = _ollama_headers_for_key(key)
 
     request = urllib.request.Request(
         ollama_api_url(base_url, "chat"),
@@ -677,7 +765,7 @@ def update_repo(repo, args):
     }
     write_text(config_path, json.dumps(config, ensure_ascii=False, indent=2))
     completed = subprocess.run(
-        [sys.executable, os.path.join(PROJECT_ROOT, "svn_to_ai_loader.py"), config_path],
+        [sys.executable, SVN_TO_AI_LOADER, config_path],
         cwd=PROJECT_ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

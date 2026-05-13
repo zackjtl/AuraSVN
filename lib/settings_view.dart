@@ -1,4 +1,67 @@
-part of 'main.dart';
+import 'package:aura_svn/app_theme.dart';
+import 'package:aura_svn/language_scope.dart';
+import 'package:aura_svn/models/svn_repository.dart';
+import 'package:aura_svn/notes_store.dart';
+import 'package:aura_svn/utils/path_utils.dart';
+import 'package:aura_svn/widgets/misc_widgets.dart';
+import 'package:flutter/material.dart';
+
+/// 將欄位標題放在輸入框上方，避免與 outline 內文字或 floating label 重疊。
+class _SettingsLabeledField extends StatelessWidget {
+  const _SettingsLabeledField({
+    required this.label,
+    required this.controller,
+    this.hintText,
+    this.prefixIcon,
+    this.obscureText = false,
+    this.minLines,
+    this.maxLines,
+    this.helperText,
+    this.onChanged,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final String? hintText;
+  final Widget? prefixIcon;
+  final bool obscureText;
+  final int? minLines;
+  final int? maxLines;
+  final String? helperText;
+  final ValueChanged<String>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          label,
+          style: theme.textTheme.bodyLarge?.copyWith(
+            fontWeight: FontWeight.w500,
+            color: aura(context).text,
+            letterSpacing: 0,
+            height: 1.3,
+          ),
+        ),
+        const SizedBox(height: 6),
+        TextField(
+          controller: controller,
+          obscureText: obscureText,
+          minLines: obscureText ? null : minLines,
+          maxLines: obscureText ? 1 : maxLines,
+          onChanged: onChanged,
+          decoration: InputDecoration(
+            hintText: hintText,
+            prefixIcon: prefixIcon,
+            helperText: helperText,
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 class SettingsView extends StatelessWidget {
   const SettingsView({
@@ -25,6 +88,8 @@ class SettingsView extends StatelessWidget {
     required this.onCheckBackend,
     required this.onStartBackend,
     required this.onStopBackendProcesses,
+    required this.onTestOllama,
+    required this.isOllamaTestBusy,
   });
 
   final AppSettings settings;
@@ -49,37 +114,39 @@ class SettingsView extends StatelessWidget {
   final Future<void> Function() onCheckBackend;
   final Future<void> Function() onStartBackend;
   final Future<void> Function() onStopBackendProcesses;
+  final Future<void> Function() onTestOllama;
+  final bool isOllamaTestBusy;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final indexPath = notesRootController.text.trim().isEmpty
         ? '-'
-        : _joinPath(notesRootController.text.trim(), 'branch_notes_index.json');
+        : joinPath(notesRootController.text.trim(), 'branch_notes_index.json');
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(2, 2, 2, 28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _SettingsSectionCard(
+          SettingsSectionCard(
             icon: Icons.settings_rounded,
-            title: _t(context, '設定', 'Settings'),
-            description: _t(
+            title: t(context, '設定', 'Settings'),
+            description: t(
               context,
               '管理介面語言、共享 Markdown 筆記、命令列、本地後端與 Ollama 設定。',
               'Manage interface language, shared Markdown notes, commands, local backend, and Ollama settings.',
             ),
             trailing: IconButton(
-              tooltip: _t(context, '返回', 'Back'),
+              tooltip: t(context, '返回', 'Back'),
               onPressed: onClose,
               icon: const Icon(Icons.close_rounded),
             ),
             children: [
               Text(
-                _t(context, '介面語言', 'Interface Language'),
+                t(context, '介面語言', 'Interface Language'),
                 style: theme.textTheme.labelLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 10),
@@ -95,9 +162,9 @@ class SettingsView extends StatelessWidget {
               ),
               const SizedBox(height: 18),
               Text(
-                _t(context, '外觀主題', 'Appearance Theme'),
+                t(context, '外觀主題', 'Appearance Theme'),
                 style: theme.textTheme.labelLarge?.copyWith(
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 10),
@@ -106,12 +173,12 @@ class SettingsView extends StatelessWidget {
                   ButtonSegment(
                     value: 'night',
                     icon: const Icon(Icons.dark_mode_rounded),
-                    label: Text(_t(context, '夜晚', 'Night')),
+                    label: Text(t(context, '夜晚', 'Night')),
                   ),
                   ButtonSegment(
                     value: 'day',
                     icon: const Icon(Icons.light_mode_rounded),
-                    label: Text(_t(context, '白天', 'Day')),
+                    label: Text(t(context, '白天', 'Day')),
                   ),
                 ],
                 selected: {appearanceThemeCode},
@@ -122,151 +189,137 @@ class SettingsView extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          _SettingsSectionCard(
+          SettingsSectionCard(
             icon: Icons.lock_outline_rounded,
-            title: _t(context, 'SVN 認證', 'SVN Credentials'),
-            description: _t(
+            title: t(context, 'SVN 認證', 'SVN Credentials'),
+            description: t(
               context,
               '可留空，使用本機 SVN 認證快取。這裡的帳號密碼只保留在目前 UI 工作階段，不會寫入設定檔。',
               'Optional. Leave blank to use the local SVN credential cache. These credentials are kept only in the current UI session and are not written to the settings file.',
             ),
             children: [
-              TextField(
+              _SettingsLabeledField(
+                label: 'SVN Username',
                 controller: usernameController,
-                decoration: const InputDecoration(
-                  labelText: 'SVN Username',
-                  prefixIcon: Icon(Icons.person_outline_rounded),
-                ),
+                prefixIcon: const Icon(Icons.person_outline_rounded),
               ),
               const SizedBox(height: 12),
-              TextField(
+              _SettingsLabeledField(
+                label: 'SVN Password',
                 controller: passwordController,
                 obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'SVN Password',
-                  prefixIcon: Icon(Icons.lock_outline_rounded),
-                ),
+                prefixIcon: const Icon(Icons.lock_outline_rounded),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          _SettingsSectionCard(
+          SettingsSectionCard(
             icon: Icons.folder_shared_rounded,
-            title: _t(context, '共享筆記目錄', 'Shared Notes Directory'),
-            description: _t(
+            title: t(context, '共享筆記目錄', 'Shared Notes Directory'),
+            description: t(
               context,
               '請指定一個所有團隊成員都能存取的固定根目錄。每台 client 指向同一個資料夾後，就會讀寫同一批分支 Markdown 筆記。',
               'Choose a shared root folder accessible to the team. Clients pointing to the same folder will read and write the same branch Markdown notes.',
             ),
             children: [
-              TextField(
-                controller: notesRootController,
-                decoration: InputDecoration(
-                  labelText: _t(
-                    context,
-                    'Markdown 筆記根目錄',
-                    'Markdown Notes Root',
-                  ),
-                  hintText: _t(
-                    context,
-                    r'例如：\\server\share\SVNBranchNotes',
-                    r'Example: \\server\share\SVNBranchNotes',
-                  ),
-                  prefixIcon: const Icon(Icons.folder_shared_rounded),
+              _SettingsLabeledField(
+                label: t(
+                  context,
+                  'Markdown 筆記根目錄',
+                  'Markdown Notes Root',
                 ),
+                controller: notesRootController,
+                hintText: t(
+                  context,
+                  r'例如：\\server\share\SVNBranchNotes',
+                  r'Example: \\server\share\SVNBranchNotes',
+                ),
+                prefixIcon: const Icon(Icons.folder_shared_rounded),
               ),
               const SizedBox(height: 14),
-              _InfoLine(
-                label: _t(context, '目前設定', 'Current Setting'),
+              InfoLine(
+                label: t(context, '目前設定', 'Current Setting'),
                 value: settings.notesRootPath,
               ),
               const SizedBox(height: 8),
-              _InfoLine(label: 'Index', value: indexPath),
+              InfoLine(label: 'Index', value: indexPath),
             ],
           ),
           const SizedBox(height: 16),
-          _SettingsSectionCard(
+          SettingsSectionCard(
             icon: Icons.terminal_rounded,
-            title: _t(context, '命令列設定', 'Command Settings'),
-            description: _t(
+            title: t(context, '命令列設定', 'Command Settings'),
+            description: t(
               context,
               '這些值會套用到 Flutter 的增量更新與本地後端啟動；後端的受控 SVN tools 也會讀取同一份設定作為預設值。',
               'These values are used by Flutter incremental updates and local backend startup. Controlled backend SVN tools read the same settings as defaults.',
             ),
             children: [
-              TextField(
+              _SettingsLabeledField(
+                label: 'SVN Command',
                 controller: svnCommandController,
-                decoration: const InputDecoration(
-                  labelText: 'SVN Command',
-                  prefixIcon: Icon(Icons.source_rounded),
-                ),
+                prefixIcon: const Icon(Icons.source_rounded),
               ),
               const SizedBox(height: 12),
-              TextField(
+              _SettingsLabeledField(
+                label: 'SVN Command Parameters',
                 controller: svnParametersController,
                 minLines: 1,
                 maxLines: 3,
-                decoration: InputDecoration(
-                  labelText: 'SVN Command Parameters',
-                  helperText: _t(
-                    context,
-                    '可用空白或換行分隔，例如 --non-interactive 與 trust-server-cert 參數。',
-                    'Separate by spaces or new lines, for example --non-interactive and trust-server-cert options.',
-                  ),
-                  prefixIcon: const Icon(Icons.tune_rounded),
+                helperText: t(
+                  context,
+                  '可用空白或換行分隔，例如 --non-interactive 與 trust-server-cert 參數。',
+                  'Separate by spaces or new lines, for example --non-interactive and trust-server-cert options.',
                 ),
+                prefixIcon: const Icon(Icons.tune_rounded),
               ),
               const SizedBox(height: 12),
-              TextField(
+              _SettingsLabeledField(
+                label: 'Python Command',
                 controller: pythonController,
-                decoration: const InputDecoration(
-                  labelText: 'Python Command',
-                  prefixIcon: Icon(Icons.terminal_rounded),
-                ),
+                prefixIcon: const Icon(Icons.terminal_rounded),
               ),
               const SizedBox(height: 14),
-              _InfoLine(
-                label: _t(context, '預設 SVN', 'Default SVN'),
-                value: _defaultSvnCommand(),
+              InfoLine(
+                label: t(context, '預設 SVN', 'Default SVN'),
+                value: defaultSvnCommand(),
               ),
               const SizedBox(height: 8),
-              _InfoLine(
-                label: _t(context, '預設參數', 'Default Parameters'),
-                value: _defaultSvnParameters(),
+              InfoLine(
+                label: t(context, '預設參數', 'Default Parameters'),
+                value: defaultSvnParameters(),
               ),
               const SizedBox(height: 8),
-              _InfoLine(
-                label: _t(context, '預設 Python', 'Default Python'),
-                value: _defaultPythonCommand(),
+              InfoLine(
+                label: t(context, '預設 Python', 'Default Python'),
+                value: defaultPythonCommand(),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          _SettingsSectionCard(
+          SettingsSectionCard(
             icon: Icons.dns_rounded,
-            title: _t(context, '本地後端與 Ollama', 'Local Backend and Ollama'),
-            description: _t(
+            title: t(context, '本地後端與 Ollama', 'Local Backend and Ollama'),
+            description: t(
               context,
               'Flutter client 會透過本地 Python 後端讀寫筆記、產生專案報告，後端再呼叫 Ollama 與受控 SVN tools。Ollama API Key 由本頁設定，不再讀取專案根目錄 .env。',
               'The Flutter client uses the local Python backend to read/write notes and generate reports. The backend calls Ollama and controlled SVN tools. Configure the Ollama API key here; project .env files are no longer read.',
             ),
             children: [
-              TextField(
+              _SettingsLabeledField(
+                label: t(context, '本地後端 URL', 'Local Backend URL'),
                 controller: backendUrlController,
-                decoration: InputDecoration(
-                  labelText: _t(context, '本地後端 URL', 'Local Backend URL'),
-                  hintText: 'http://127.0.0.1:8765',
-                  prefixIcon: const Icon(Icons.dns_rounded),
-                ),
+                hintText: 'http://127.0.0.1:8765',
+                prefixIcon: const Icon(Icons.dns_rounded),
               ),
               const SizedBox(height: 12),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: _aura(context).surfaceAlt,
+                  color: aura(context).surfaceAlt,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: _aura(context).border),
+                  border: Border.all(color: aura(context).border),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -280,7 +333,7 @@ class SettingsView extends StatelessWidget {
                       child: SelectableText(
                         backendStatus,
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -301,18 +354,18 @@ class SettingsView extends StatelessWidget {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.health_and_safety_rounded),
-                    label: Text(_t(context, '檢查狀態', 'Check Status')),
+                    label: Text(t(context, '檢查狀態', 'Check Status')),
                   ),
                   OutlinedButton.icon(
                     onPressed: isBackendBusy ? null : onStartBackend,
                     icon: const Icon(Icons.play_arrow_rounded),
-                    label: Text(_t(context, '啟動本地後端', 'Start Local Backend')),
+                    label: Text(t(context, '啟動本地後端', 'Start Local Backend')),
                   ),
                   OutlinedButton.icon(
                     onPressed: isBackendBusy ? null : onStopBackendProcesses,
                     icon: const Icon(Icons.stop_circle_rounded),
                     label:
-                        Text(_t(context, '關閉舊 process', 'Close Old Processes')),
+                        Text(t(context, '關閉舊 process', 'Close Old Processes')),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.red,
                     ),
@@ -320,39 +373,66 @@ class SettingsView extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 12),
-              TextField(
+              _SettingsLabeledField(
+                label: 'Ollama Base URL',
                 controller: ollamaUrlController,
-                decoration: InputDecoration(
-                  labelText: 'Ollama Base URL',
-                  hintText: _t(
-                    context,
-                    '例如：http://localhost:11434 或雲端 Ollama URL',
-                    'Example: http://localhost:11434 or a cloud Ollama URL',
-                  ),
-                  prefixIcon: const Icon(Icons.memory_rounded),
+                hintText: t(
+                  context,
+                  '例如：http://localhost:11434 或雲端 Ollama URL',
+                  'Example: http://localhost:11434 or a cloud Ollama URL',
                 ),
+                prefixIcon: const Icon(Icons.memory_rounded),
               ),
               const SizedBox(height: 12),
-              TextField(
+              _SettingsLabeledField(
+                label: 'Ollama Model',
                 controller: ollamaModelController,
-                decoration: const InputDecoration(
-                  labelText: 'Ollama Model',
-                  hintText: 'qwen3-coder-next',
-                  prefixIcon: Icon(Icons.smart_toy_rounded),
-                ),
+                hintText: 'qwen3-coder-next',
+                prefixIcon: const Icon(Icons.smart_toy_rounded),
               ),
               const SizedBox(height: 12),
-              TextField(
+              _SettingsLabeledField(
+                label: 'Ollama API Key',
                 controller: ollamaApiKeyController,
                 obscureText: true,
-                decoration: InputDecoration(
-                  labelText: 'Ollama API Key',
-                  hintText: _t(
-                    context,
-                    '雲端 Ollama 需要時填入；本機無認證可留空',
-                    'Required for cloud Ollama; leave blank for local unauthenticated servers',
+                hintText: t(
+                  context,
+                  '雲端 Ollama 需要時填入；本機無認證可留空',
+                  'Required for cloud Ollama; leave blank for local unauthenticated servers',
+                ),
+                prefixIcon: const Icon(Icons.key_rounded),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: (isBackendBusy || isOllamaTestBusy)
+                        ? null
+                        : onTestOllama,
+                    icon: isOllamaTestBusy
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.science_outlined),
+                    label: Text(
+                      t(context, '測試 Ollama 連線', 'Test Ollama Connection'),
+                    ),
                   ),
-                  prefixIcon: const Icon(Icons.key_rounded),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                t(
+                  context,
+                  '使用目前欄位內容（可不先儲存），由本地後端代為呼叫 Ollama；請先啟動後端並確認 URL／Model／API Key 正確。',
+                  'Uses the current field values (no need to save first); the local backend calls Ollama on your behalf. Start the backend and verify URL, model, and API key.',
+                ),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: aura(context).textMuted,
                 ),
               ),
               const SizedBox(height: 12),
@@ -374,14 +454,14 @@ class SettingsView extends StatelessWidget {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        _t(
+                        t(
                           context,
                           '安全提醒：API Key 會以明文儲存在本機 .runtime_configs/app_settings.json，僅建議用於受信任電腦。若此專案資料夾會分享、同步或提交版本控制，請先確認該檔案不會外流。',
                           'Security reminder: The API key is stored as plain text in local .runtime_configs/app_settings.json. Use this only on trusted machines. If this project folder is shared, synced, or committed to version control, make sure the file will not leak.',
                         ),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: const Color(0xFF92400E),
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -391,10 +471,10 @@ class SettingsView extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          _SettingsSectionCard(
+          SettingsSectionCard(
             icon: Icons.save_rounded,
-            title: _t(context, '儲存與資料格式', 'Save and Storage Layout'),
-            description: _t(
+            title: t(context, '儲存與資料格式', 'Save and Storage Layout'),
+            description: t(
               context,
               '儲存後會套用設定並返回主頁。',
               'Saving applies settings and returns to the home page.',
@@ -407,12 +487,12 @@ class SettingsView extends StatelessWidget {
                   FilledButton.icon(
                     onPressed: onSave,
                     icon: const Icon(Icons.save_rounded),
-                    label: Text(_t(context, '儲存設定', 'Save Settings')),
+                    label: Text(t(context, '儲存設定', 'Save Settings')),
                   ),
                   OutlinedButton.icon(
                     onPressed: onClose,
                     icon: const Icon(Icons.arrow_back_rounded),
-                    label: Text(_t(context, '返回資料檢視', 'Back to Data View')),
+                    label: Text(t(context, '返回資料檢視', 'Back to Data View')),
                   ),
                 ],
               ),
@@ -421,9 +501,9 @@ class SettingsView extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  color: _aura(context).surfaceAlt,
+                  color: aura(context).surfaceAlt,
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: _aura(context).border),
+                  border: Border.all(color: aura(context).border),
                 ),
                 child: const SelectableText(
                   'notes_root/\n'
@@ -442,8 +522,8 @@ class SettingsView extends StatelessWidget {
   }
 }
 
-class _SettingsSectionCard extends StatelessWidget {
-  const _SettingsSectionCard({
+class SettingsSectionCard extends StatelessWidget {
+  const SettingsSectionCard({
     required this.icon,
     required this.title,
     required this.description,
@@ -486,14 +566,16 @@ class _SettingsSectionCard extends StatelessWidget {
                       Text(
                         title,
                         style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w900,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0,
+                          height: 1.25,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         description,
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: _aura(context).textMuted,
+                          color: aura(context).textMuted,
                         ),
                       ),
                     ],
@@ -514,8 +596,8 @@ class _SettingsSectionCard extends StatelessWidget {
   }
 }
 
-class _RepositoryProfilesEditor extends StatefulWidget {
-  const _RepositoryProfilesEditor({
+class RepositoryProfilesEditor extends StatefulWidget {
+  const RepositoryProfilesEditor({
     required this.repositories,
     required this.onChanged,
   });
@@ -524,11 +606,11 @@ class _RepositoryProfilesEditor extends StatefulWidget {
   final ValueChanged<List<SvnRepository>> onChanged;
 
   @override
-  State<_RepositoryProfilesEditor> createState() =>
-      _RepositoryProfilesEditorState();
+State<RepositoryProfilesEditor> createState() =>
+      RepositoryProfilesEditorState();
 }
 
-class _RepositoryProfilesEditorState extends State<_RepositoryProfilesEditor> {
+class RepositoryProfilesEditorState extends State<RepositoryProfilesEditor> {
   final _drafts = <_RepositoryProfileDraft>[];
 
   @override
@@ -538,7 +620,7 @@ class _RepositoryProfilesEditorState extends State<_RepositoryProfilesEditor> {
   }
 
   @override
-  void didUpdateWidget(covariant _RepositoryProfilesEditor oldWidget) {
+  void didUpdateWidget(covariant RepositoryProfilesEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!_profilesEqual(widget.repositories, _toRepositories())) {
       _replaceDrafts(widget.repositories);
@@ -597,35 +679,41 @@ class _RepositoryProfilesEditorState extends State<_RepositoryProfilesEditor> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    final fieldTheme = theme.copyWith(
+      inputDecorationTheme: theme.inputDecorationTheme.copyWith(
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: BorderSide(color: aura(context).border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: BorderSide(color: theme.colorScheme.primary),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: BorderSide(color: theme.colorScheme.error),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(5),
+          borderSide: BorderSide(color: theme.colorScheme.error, width: 2),
+        ),
+      ),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                _t(context, 'Repository Profiles', 'Repository Profiles'),
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
-            FilledButton.icon(
-              onPressed: _addProfile,
-              icon: const Icon(Icons.add_rounded),
-              label: Text(_t(context, '新增庫', 'Add Repository')),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(
-          _t(
-            context,
-            '可新增或刪除 SVN 庫。Title 與 SVN Base URL 必填；Sub Title 可留空。',
-            'Add or remove SVN repositories. Title and SVN Base URL are required; Sub Title is optional.',
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.icon(
+            onPressed: _addProfile,
+            icon: const Icon(Icons.add_rounded),
+            label: Text(t(context, '新增庫', 'Add Repository')),
           ),
-          style: theme.textTheme.bodyMedium
-              ?.copyWith(color: _aura(context).textMuted),
         ),
         const SizedBox(height: 14),
         ..._drafts.asMap().entries.map((entry) {
@@ -636,9 +724,9 @@ class _RepositoryProfilesEditorState extends State<_RepositoryProfilesEditor> {
             child: Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: _aura(context).surfaceAlt,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: _aura(context).border),
+                color: cyberSurfaceSoft,
+                borderRadius: BorderRadius.circular(5),
+                border: Border.all(color: aura(context).border),
               ),
               child: Column(
                 children: [
@@ -646,14 +734,14 @@ class _RepositoryProfilesEditorState extends State<_RepositoryProfilesEditor> {
                     children: [
                       Expanded(
                         child: Text(
-                          '${_t(context, 'Profile', 'Profile')} ${index + 1}',
+                          '${t(context, 'Profile', 'Profile')} ${index + 1}',
                           style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w900,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
                       IconButton(
-                        tooltip: _t(context, '刪除', 'Delete'),
+                        tooltip: t(context, '刪除', 'Delete'),
                         onPressed: _drafts.length <= 1
                             ? null
                             : () => _deleteProfile(index),
@@ -663,38 +751,40 @@ class _RepositoryProfilesEditorState extends State<_RepositoryProfilesEditor> {
                     ],
                   ),
                   const SizedBox(height: 10),
-                  TextField(
-                    controller: draft.title,
-                    onChanged: (_) => _emitChanged(),
-                    decoration: InputDecoration(
-                      labelText: _t(context, 'Title（必填）', 'Title (required)'),
-                      prefixIcon: const Icon(Icons.badge_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: draft.subtitle,
-                    onChanged: (_) => _emitChanged(),
-                    decoration: InputDecoration(
-                      labelText: _t(
-                        context,
-                        'Sub Title（可留空）',
-                        'Sub Title (optional)',
-                      ),
-                      prefixIcon: const Icon(Icons.short_text_rounded),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: draft.url,
-                    onChanged: (_) => _emitChanged(),
-                    decoration: InputDecoration(
-                      labelText: _t(
-                        context,
-                        'SVN Base URL（必填）',
-                        'SVN Base URL (required)',
-                      ),
-                      prefixIcon: const Icon(Icons.link_rounded),
+                  Theme(
+                    data: fieldTheme,
+                    child: Column(
+                      children: [
+                        _SettingsLabeledField(
+                          label: t(
+                              context, 'Title（必填）', 'Title (required)'),
+                          controller: draft.title,
+                          prefixIcon: const Icon(Icons.badge_outlined),
+                          onChanged: (_) => _emitChanged(),
+                        ),
+                        const SizedBox(height: 10),
+                        _SettingsLabeledField(
+                          label: t(
+                            context,
+                            'Sub Title（可留空）',
+                            'Sub Title (optional)',
+                          ),
+                          controller: draft.subtitle,
+                          prefixIcon: const Icon(Icons.short_text_rounded),
+                          onChanged: (_) => _emitChanged(),
+                        ),
+                        const SizedBox(height: 10),
+                        _SettingsLabeledField(
+                          label: t(
+                            context,
+                            'SVN Base URL（必填）',
+                            'SVN Base URL (required)',
+                          ),
+                          controller: draft.url,
+                          prefixIcon: const Icon(Icons.link_rounded),
+                          onChanged: (_) => _emitChanged(),
+                        ),
+                      ],
                     ),
                   ),
                 ],

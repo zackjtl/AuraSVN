@@ -1,4 +1,14 @@
-part of 'main.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:aura_svn/models/project_report_log_entry.dart';
+import 'package:aura_svn/models/svn_repository.dart';
+import 'package:aura_svn/utils/helpers.dart';
+import 'package:aura_svn/utils/path_utils.dart';
+
+const svnTrustArg =
+    '--trust-server-cert-failures=unknown-ca,cn-mismatch,expired,not-yet-valid,other';
 
 class AppSettings {
   const AppSettings({
@@ -24,11 +34,11 @@ class AppSettings {
           json['ollama_base_url']?.toString() ?? 'http://localhost:11434',
       ollamaModel: json['ollama_model']?.toString() ?? 'qwen3-coder-next',
       ollamaApiKey: json['ollama_api_key']?.toString() ?? '',
-      svnCommand: json['svn_command']?.toString() ?? _defaultSvnCommand(),
+      svnCommand: json['svn_command']?.toString() ?? defaultSvnCommand(),
       svnCommandParameters:
-          json['svn_command_parameters']?.toString() ?? _defaultSvnParameters(),
+          json['svn_command_parameters']?.toString() ?? defaultSvnParameters(),
       pythonCommand:
-          json['python_command']?.toString() ?? _defaultPythonCommand(),
+          json['python_command']?.toString() ?? defaultPythonCommand(),
       languageCode: _normalizeLanguageCode(json['language_code']?.toString()),
       appearanceThemeCode:
           _normalizeAppearanceThemeCode(json['appearance_theme']?.toString()),
@@ -38,17 +48,17 @@ class AppSettings {
 
   factory AppSettings.defaults(Directory projectRoot) {
     return AppSettings(
-      notesRootPath: _joinPath(projectRoot.path, 'branch_notes'),
+      notesRootPath: joinPath(projectRoot.path, 'branch_notes'),
       backendBaseUrl: 'http://127.0.0.1:8765',
       ollamaBaseUrl: 'http://localhost:11434',
       ollamaModel: 'qwen3-coder-next',
       ollamaApiKey: '',
-      svnCommand: _defaultSvnCommand(),
-      svnCommandParameters: _defaultSvnParameters(),
-      pythonCommand: _defaultPythonCommand(),
+      svnCommand: defaultSvnCommand(),
+      svnCommandParameters: defaultSvnParameters(),
+      pythonCommand: defaultPythonCommand(),
       languageCode: 'zh_TW',
       appearanceThemeCode: 'night',
-      repositories: _defaultRepositories,
+      repositories: defaultRepositories,
     );
   }
 
@@ -82,7 +92,7 @@ class AppSettings {
 
 List<SvnRepository> _repositoryProfilesFromJson(Object? value) {
   if (value is! List) {
-    return _defaultRepositories;
+    return defaultRepositories;
   }
   final repositories = value
       .whereType<Map>()
@@ -90,7 +100,7 @@ List<SvnRepository> _repositoryProfilesFromJson(Object? value) {
       .where((repository) =>
           repository.name.trim().isNotEmpty && repository.url.trim().isNotEmpty)
       .toList();
-  return repositories.isEmpty ? _defaultRepositories : repositories;
+  return repositories.isEmpty ? defaultRepositories : repositories;
 }
 
 String _normalizeLanguageCode(String? value) {
@@ -117,9 +127,9 @@ class BranchNoteDocument {
   final DateTime? updatedAt;
 }
 
-Future<AppSettings> _loadAppSettings(Directory projectRoot) async {
+Future<AppSettings> loadAppSettings(Directory projectRoot) async {
   final file =
-      File(_joinPath(_settingsDir(projectRoot).path, 'app_settings.json'));
+      File(joinPath(settingsDir(projectRoot).path, 'app_settings.json'));
   if (!await file.exists()) {
     return AppSettings.defaults(projectRoot);
   }
@@ -135,7 +145,7 @@ Future<AppSettings> _loadAppSettings(Directory projectRoot) async {
   return settings;
 }
 
-Future<void> _saveAppSettings(
+Future<void> saveAppSettings(
     Directory projectRoot, AppSettings settings) async {
   if (settings.notesRootPath.trim().isEmpty) {
     throw Exception('Markdown 筆記根目錄不可為空。');
@@ -171,23 +181,23 @@ Future<void> _saveAppSettings(
     await notesRoot.create(recursive: true);
   }
 
-  final settingsDir = _settingsDir(projectRoot);
-  if (!await settingsDir.exists()) {
-    await settingsDir.create(recursive: true);
+  final dir = settingsDir(projectRoot);
+  if (!await dir.exists()) {
+    await dir.create(recursive: true);
   }
-  final file = File(_joinPath(settingsDir.path, 'app_settings.json'));
+  final file = File(joinPath(dir.path, 'app_settings.json'));
   await file.writeAsString(
     const JsonEncoder.withIndent('  ').convert(settings.toJson()),
     encoding: utf8,
   );
 }
 
-Future<BranchNoteDocument> _loadBranchNote({
+Future<BranchNoteDocument> loadBranchNote({
   required AppSettings settings,
   required SvnRepository repository,
   required String branchPath,
 }) async {
-  final decoded = await _backendPost(settings, '/api/notes/read', {
+  final decoded = await backendPost(settings, '/api/notes/read', {
     'notes_root': settings.notesRootPath,
     'repo': repository.name,
     'branch_path': branchPath,
@@ -197,11 +207,11 @@ Future<BranchNoteDocument> _loadBranchNote({
     branchPath: decoded['branch_path']?.toString() ?? branchPath,
     noteFile: decoded['note_file']?.toString() ?? '',
     content: decoded['content']?.toString() ?? '',
-    updatedAt: _parseDateTime(decoded['updated_at']),
+    updatedAt: parseDateTime(decoded['updated_at']),
   );
 }
 
-Future<BranchNoteDocument> _saveBranchNote({
+Future<BranchNoteDocument> saveBranchNote({
   required AppSettings settings,
   required SvnRepository repository,
   required String branchPath,
@@ -211,7 +221,7 @@ Future<BranchNoteDocument> _saveBranchNote({
     throw Exception('請先到設定頁指定 Markdown 筆記根目錄。');
   }
 
-  final decoded = await _backendPost(settings, '/api/notes/write', {
+  final decoded = await backendPost(settings, '/api/notes/write', {
     'notes_root': settings.notesRootPath,
     'repo': repository.name,
     'branch_path': branchPath,
@@ -222,11 +232,11 @@ Future<BranchNoteDocument> _saveBranchNote({
     branchPath: decoded['branch_path']?.toString() ?? branchPath,
     noteFile: decoded['note_file']?.toString() ?? '',
     content: decoded['content']?.toString() ?? content,
-    updatedAt: _parseDateTime(decoded['updated_at']) ?? DateTime.now(),
+    updatedAt: parseDateTime(decoded['updated_at']) ?? DateTime.now(),
   );
 }
 
-Future<ProjectReportResult> _generateProjectReportStream({
+Future<ProjectReportResult> generateProjectReportStream({
   required AppSettings settings,
   required SvnRepository repository,
   required String reportTitle,
@@ -245,6 +255,7 @@ Future<ProjectReportResult> _generateProjectReportStream({
       'notes_root': settings.notesRootPath,
       'ollama_base_url': settings.ollamaBaseUrl,
       'model': settings.ollamaModel,
+      'ollama_api_key': settings.ollamaApiKey,
       'report_title': reportTitle,
       'user_prompt': userPrompt,
     };
@@ -319,7 +330,7 @@ Future<ProjectReportResult> _generateProjectReportStream({
   }
 }
 
-Future<List<ProjectReportResult>> _loadProjectReportHistory({
+Future<List<ProjectReportResult>> loadProjectReportHistory({
   required AppSettings settings,
   required SvnRepository repository,
 }) async {
@@ -327,7 +338,7 @@ Future<List<ProjectReportResult>> _loadProjectReportHistory({
     throw Exception('請先到設定頁指定 Markdown 筆記根目錄。');
   }
 
-  final decoded = await _backendPost(settings, '/api/reports/history', {
+  final decoded = await backendPost(settings, '/api/reports/history', {
     'repo': repository.name,
     'notes_root': settings.notesRootPath,
   });
@@ -347,14 +358,14 @@ Future<List<ProjectReportResult>> _loadProjectReportHistory({
       .toList();
 }
 
-Future<RevisionDiffResult> _loadRevisionDiff({
+Future<RevisionDiffResult> loadRevisionDiff({
   required AppSettings settings,
   required SvnRepository repository,
   required int revision,
   String? path,
   bool refresh = false,
 }) async {
-  final decoded = await _backendPost(
+  final decoded = await backendPost(
     settings,
     '/api/revisions/diff',
     {
@@ -367,7 +378,7 @@ Future<RevisionDiffResult> _loadRevisionDiff({
   );
   return RevisionDiffResult(
     repoName: decoded['repo']?.toString() ?? repository.name,
-    revision: _asInt(decoded['revision']) ?? revision,
+    revision: asInt(decoded['revision']) ?? revision,
     path: decoded['path']?.toString() ?? path ?? '',
     diff: decoded['diff']?.toString() ?? '',
     cacheFile: decoded['cache_file']?.toString() ?? '',
@@ -400,7 +411,7 @@ class ProjectReportResult {
       userPrompt: (json['user_prompt'] ?? json['prompt'])?.toString() ?? '',
       report: json['report']?.toString() ?? '',
       reportFile: json['report_file']?.toString() ?? '',
-      createdAt: _parseDateTime(json['created_at']),
+      createdAt: parseDateTime(json['created_at']),
     );
   }
 
@@ -432,11 +443,11 @@ class RevisionDiffResult {
   final bool cached;
 }
 
-Directory _settingsDir(Directory projectRoot) {
-  return Directory(_joinPath(projectRoot.path, '.runtime_configs'));
+Directory settingsDir(Directory projectRoot) {
+  return Directory(joinPath(projectRoot.path, '.runtime_configs'));
 }
 
-Future<Map<String, dynamic>> _backendPost(
+Future<Map<String, dynamic>> backendPost(
   AppSettings settings,
   String path,
   Map<String, dynamic> payload, {
@@ -479,25 +490,17 @@ Future<Map<String, dynamic>> _backendPost(
   }
 }
 
-DateTime? _parseDateTime(Object? value) {
-  final text = value?.toString() ?? '';
-  if (text.isEmpty) {
-    return null;
-  }
-  return DateTime.tryParse(text);
-}
-
-String _defaultSvnCommand() {
+String defaultSvnCommand() {
   if (Platform.isWindows) {
     return r'C:\Program Files\TortoiseSVN\bin\svn.exe';
   }
   return 'svn';
 }
 
-String _defaultSvnParameters() {
-  return '--non-interactive $_svnTrustArg';
+String defaultSvnParameters() {
+  return '--non-interactive $svnTrustArg';
 }
 
-String _defaultPythonCommand() {
+String defaultPythonCommand() {
   return Platform.isWindows ? 'py -3.14' : 'python3';
 }
