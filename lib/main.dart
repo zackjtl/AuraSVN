@@ -106,16 +106,13 @@ ThemeData _buildAuraThemeData(String appearanceThemeCode) {
     useMaterial3: true,
     scaffoldBackgroundColor: colors.background,
     extensions: [colors],
-    cardTheme: CardThemeData(
+    cardTheme: CardTheme(
       clipBehavior: Clip.antiAlias,
       elevation: 0,
       color: night ? _cyberBackground : colors.surface,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(night ? 8 : 14),
-        side: BorderSide(
-          color: night ? _stitchGlassBorder : colors.border,
-        ),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
@@ -143,7 +140,7 @@ ThemeData _buildAuraThemeData(String appearanceThemeCode) {
     ),
     chipTheme: ChipThemeData(
       backgroundColor: colors.surfaceSoft,
-      selectedColor: colors.accent.withValues(alpha: night ? 0.2 : 0.14),
+      selectedColor: colors.accent.withOpacity(night ? 0.2 : 0.14),
       side: BorderSide(color: colors.border),
       labelStyle: TextStyle(color: colors.text),
       secondaryLabelStyle: TextStyle(color: colors.text),
@@ -1610,7 +1607,7 @@ class _DashboardPageState extends State<DashboardPage> {
                         color: _stitchSurfaceDim,
                         border: Border(
                           right: BorderSide(
-                            color: aura.border.withValues(alpha: 0.22),
+                            color: aura.border.withOpacity(0.22),
                           ),
                         ),
                       ),
@@ -1656,7 +1653,7 @@ class _DashboardPageState extends State<DashboardPage> {
                           ),
                           Container(
                             height: 1,
-                            color: aura.border.withValues(alpha: 0.1),
+                            color: aura.border.withOpacity(0.1),
                           ),
                           Expanded(child: list),
                         ],
@@ -1775,13 +1772,13 @@ class _ControlPanel extends StatelessWidget {
       color: isDark ? _stitchSurfaceContainerHigh : aura.surfaceAlt,
       border: Border(
         right: BorderSide(
-          color: aura.border.withValues(alpha: isDark ? 0.22 : 0.4),
+          color: aura.border.withOpacity(isDark ? 0.22 : 0.4),
         ),
       ),
       boxShadow: isDark
           ? [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.5),
+                color: Colors.black.withOpacity(0.5),
                 blurRadius: 28,
                 offset: const Offset(4, 0),
               ),
@@ -1796,7 +1793,7 @@ class _ControlPanel extends StatelessWidget {
       alignment: AlignmentDirectional.centerStart,
       foregroundColor: sidebarActionGray,
       backgroundColor: Colors.transparent,
-      disabledForegroundColor: sidebarActionGray.withValues(alpha: 0.45),
+      disabledForegroundColor: sidebarActionGray.withOpacity(0.45),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       minimumSize: const Size.fromHeight(44),
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -1821,14 +1818,14 @@ class _ControlPanel extends StatelessWidget {
             Container(
               height: 1,
               margin: const EdgeInsets.symmetric(horizontal: 16),
-              color: aura.border.withValues(alpha: 0.4),
+              color: aura.border.withOpacity(0.4),
             ),
             const SizedBox(height: 14),
             Tooltip(
               message: selectedRepository.name,
               child: CircleAvatar(
                 backgroundColor:
-                    theme.colorScheme.primary.withValues(alpha: 0.14),
+                    theme.colorScheme.primary.withOpacity(0.14),
                 child: Text(
                   selectedRepository.name.replaceAll('_AP', '').substring(2),
                   style: TextStyle(
@@ -1899,7 +1896,7 @@ class _ControlPanel extends StatelessWidget {
           ),
           Container(
             height: 1,
-            color: aura.border.withValues(alpha: 0.35),
+            color: aura.border.withOpacity(0.35),
           ),
           Expanded(
             child: ListView(
@@ -1942,7 +1939,7 @@ class _ControlPanel extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: Container(
                     height: 1,
-                    color: aura.border.withValues(alpha: isDark ? 0.28 : 0.38),
+                    color: aura.border.withOpacity(isDark ? 0.28 : 0.38),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -2294,20 +2291,20 @@ class _BranchCommitPreviewDialog extends StatelessWidget {
           filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
           child: Container(
             decoration: BoxDecoration(
-              color: _aura(context).surface.withValues(alpha: 0.72),
+              color: _aura(context).surface.withOpacity(0.72),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
-                color: theme.colorScheme.primary.withValues(alpha: 0.34),
+                color: theme.colorScheme.primary.withOpacity(0.34),
                 width: 1.2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.14),
+                  color: theme.colorScheme.primary.withOpacity(0.14),
                   blurRadius: 34,
                   spreadRadius: 1,
                 ),
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.38),
+                  color: Colors.black.withOpacity(0.38),
                   blurRadius: 40,
                   offset: const Offset(0, 18),
                 ),
@@ -2327,7 +2324,7 @@ class _BranchCommitPreviewDialog extends StatelessWidget {
                       children: [
                         CircleAvatar(
                           backgroundColor:
-                              theme.colorScheme.primary.withValues(alpha: 0.14),
+                              theme.colorScheme.primary.withOpacity(0.14),
                           child: Icon(
                             Icons.receipt_long_rounded,
                             color: theme.colorScheme.primary,
@@ -2547,7 +2544,7 @@ class _DataPanelTopLeakDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final line = Color.alphaBlend(
-      _cyberAccent.withValues(alpha: 0.11),
+      _cyberAccent.withOpacity(0.11),
       _cyberBackground,
     );
     return SizedBox(
@@ -2565,23 +2562,23 @@ class _DataPanelTopLeakDivider extends StatelessWidget {
                   stops: const [0.0, 0.2, 0.42, 0.65, 0.86, 1.0],
                   colors: [
                     Color.alphaBlend(
-                      _cyberAccent.withValues(alpha: 0.038),
+                      _cyberAccent.withOpacity(0.038),
                       _cyberBackground,
                     ),
                     Color.alphaBlend(
-                      _cyberAccent.withValues(alpha: 0.022),
+                      _cyberAccent.withOpacity(0.022),
                       _cyberBackground,
                     ),
                     Color.alphaBlend(
-                      _cyberAccent.withValues(alpha: 0.012),
+                      _cyberAccent.withOpacity(0.012),
                       _cyberBackground,
                     ),
                     Color.alphaBlend(
-                      _cyberAccent.withValues(alpha: 0.006),
+                      _cyberAccent.withOpacity(0.006),
                       _cyberBackground,
                     ),
                     Color.alphaBlend(
-                      _cyberAccent.withValues(alpha: 0.002),
+                      _cyberAccent.withOpacity(0.002),
                       _cyberBackground,
                     ),
                     _cyberBackground,
@@ -2707,10 +2704,10 @@ class _DataPanel extends StatelessWidget {
                               SegmentedButton<bool>(
                                 style: ButtonStyle(
                                   backgroundColor:
-                                      WidgetStateProperty.resolveWith(
+                                      MaterialStateProperty.resolveWith(
                                           (states) {
                                     if (states.contains(
-                                            WidgetState.selected) &&
+                                            MaterialState.selected) &&
                                         Theme.of(context).brightness ==
                                             Brightness.dark) {
                                       return const Color(0xFF17233F);
@@ -2875,10 +2872,10 @@ class _DataPanel extends StatelessWidget {
                                 SegmentedButton<bool>(
                                   style: ButtonStyle(
                                     backgroundColor:
-                                        WidgetStateProperty.resolveWith(
+                                        MaterialStateProperty.resolveWith(
                                             (states) {
                                       if (states.contains(
-                                              WidgetState.selected) &&
+                                              MaterialState.selected) &&
                                           Theme.of(context).brightness ==
                                               Brightness.dark) {
                                         return const Color(0xFF17233F);
@@ -3096,11 +3093,11 @@ class _RepositoryTile extends StatelessWidget {
       duration: const Duration(milliseconds: 160),
       curve: Curves.easeOut,
       transform: selected && isDark
-          ? (Matrix4.identity()..translateByDouble(4, 0, 0, 1))
+          ? (Matrix4.identity()..translate(4, 0, 0))
           : Matrix4.identity(),
       decoration: BoxDecoration(
         color: selected
-            ? accentColor.withValues(alpha: 0.10)
+            ? accentColor.withOpacity(0.10)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(isDark ? 8 : 10),
         border: selected
@@ -3118,8 +3115,8 @@ class _RepositoryTile extends StatelessWidget {
           onTap: enabled ? onTap : null,
           borderRadius: BorderRadius.circular(isDark ? 8 : 10),
           hoverColor: isDark
-              ? aura.accent.withValues(alpha: 0.05)
-              : aura.surfaceSoft.withValues(alpha: 0.4),
+              ? aura.accent.withOpacity(0.05)
+              : aura.surfaceSoft.withOpacity(0.4),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 10, 12, 10),
             child: Row(
@@ -3202,11 +3199,11 @@ class _TopologyNodeTile extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(radius),
             color: selected
-                ? theme.colorScheme.primary.withValues(alpha: 0.08)
+                ? theme.colorScheme.primary.withOpacity(0.08)
                 : (isDark ? _stitchGlassFill : _aura(context).surfaceAlt),
             border: Border.all(
               color: selected
-                  ? theme.colorScheme.primary.withValues(alpha: 0.35)
+                  ? theme.colorScheme.primary.withOpacity(0.35)
                   : (isDark ? _stitchGlassBorder : _aura(context).border),
             ),
           ),
@@ -3315,8 +3312,8 @@ class _CommitTimelineItem extends StatelessWidget {
                   lineColor: aura.border,
                   nodeColor: highlight ? _stitchPrimaryFixed : aura.border,
                   nodeGlowColor: highlight
-                      ? _stitchPrimaryFixed.withValues(alpha: 0.85)
-                      : aura.border.withValues(alpha: 0.5),
+                      ? _stitchPrimaryFixed.withOpacity(0.85)
+                      : aura.border.withOpacity(0.5),
                   isFirst: isFirst,
                   isLast: isLast,
                   highlightNode: highlight,
@@ -3364,7 +3361,7 @@ class _TimelineRailPainter extends CustomPainter {
     const nodeY = 22.0;
 
     final linePaint = Paint()
-      ..color = lineColor.withValues(alpha: 0.35)
+      ..color = lineColor.withOpacity(0.35)
       ..strokeWidth = 2
       ..strokeCap = StrokeCap.round;
     if (!isFirst) {
@@ -3505,22 +3502,22 @@ class _CommitTileState extends State<_CommitTile> {
                         ? _stitchPrimaryFixed
                         : (isDark
                             ? _stitchGlassBorder
-                            : aura.border.withValues(alpha: 0.65)),
+                            : aura.border.withOpacity(0.65)),
                   ),
                   top: BorderSide(
                     color: isDark
                         ? _stitchGlassBorder
-                        : aura.border.withValues(alpha: 0.4),
+                        : aura.border.withOpacity(0.4),
                   ),
                   right: BorderSide(
                     color: isDark
                         ? _stitchGlassBorder
-                        : aura.border.withValues(alpha: 0.4),
+                        : aura.border.withOpacity(0.4),
                   ),
                   bottom: BorderSide(
                     color: isDark
                         ? _stitchGlassBorder
-                        : aura.border.withValues(alpha: 0.4),
+                        : aura.border.withOpacity(0.4),
                   ),
                 ),
               ),
@@ -3584,7 +3581,7 @@ class _CommitTileState extends State<_CommitTile> {
                 shape: BoxShape.circle,
                 color: aura.surfaceSoft,
                 border: Border.all(
-                  color: aura.border.withValues(alpha: 0.6),
+                  color: aura.border.withOpacity(0.6),
                 ),
               ),
               alignment: Alignment.center,
@@ -3616,7 +3613,7 @@ class _CommitTileState extends State<_CommitTile> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: aura.violet.withValues(alpha: 0.12),
+                  color: aura.violet.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -3636,7 +3633,7 @@ class _CommitTileState extends State<_CommitTile> {
                 color: aura.surfaceSoft,
                 borderRadius: BorderRadius.circular(4),
                 border: Border.all(
-                  color: aura.border.withValues(alpha: 0.5),
+                  color: aura.border.withOpacity(0.5),
                 ),
               ),
               child: Text(
@@ -3682,7 +3679,7 @@ class _CommitTileState extends State<_CommitTile> {
                         alignment: Alignment.center,
                         padding: const EdgeInsets.symmetric(vertical: 2),
                         decoration: BoxDecoration(
-                          color: _actionColor(path.action).withValues(alpha: 0.12),
+                          color: _actionColor(path.action).withOpacity(0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
@@ -3790,7 +3787,7 @@ class _RevisionDiffDialog extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     backgroundColor:
-                        theme.colorScheme.primary.withValues(alpha: 0.12),
+                        theme.colorScheme.primary.withOpacity(0.12),
                     child: Icon(
                       Icons.difference_rounded,
                       color: theme.colorScheme.primary,
@@ -4101,7 +4098,7 @@ class _DiffStatPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
+        color: color.withOpacity(0.10),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
@@ -4323,7 +4320,7 @@ class _DiffLineRange extends StatelessWidget {
       width: 70,
       alignment: Alignment.centerRight,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      color: Colors.black.withValues(alpha: 0.03),
+      color: Colors.black.withOpacity(0.03),
       child: Text(
         text,
         textAlign: TextAlign.right,
@@ -4667,7 +4664,7 @@ class _StatusPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -4724,7 +4721,7 @@ class _ErrorBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.red.withValues(alpha: 0.08),
+        color: Colors.red.withOpacity(0.08),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(

@@ -1,0 +1,15 @@
+{
+  "chat.tools.terminal.autoApprove": {
+    "/^python --version$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^python fix_api\\.py$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "flutter": true,
+    "dart": true,
+    "git add": true
+  }
+}

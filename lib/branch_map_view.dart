@@ -70,13 +70,8 @@ class _BranchMapViewState extends State<BranchMapView> {
     final targetY = 120.0 + depth * 180.0;
     final center = Offset(viewport.width / 2, viewport.height / 2);
     _transformationController.value = Matrix4.identity()
-      ..translateByDouble(
-        center.dx - targetX * scale,
-        center.dy - targetY * scale,
-        0,
-        1,
-      )
-      ..scaleByDouble(scale, scale, scale, 1);
+      ..translate(center.dx - targetX * scale, center.dy - targetY * scale, 0)
+      ..scale(scale, scale, scale);
   }
 
   @override
@@ -387,7 +382,7 @@ class _BranchMapNode extends StatelessWidget {
             border: Border.all(color: borderColor, width: 1.4),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.10),
+                color: Colors.black.withOpacity(0.10),
                 blurRadius: 16,
                 offset: const Offset(0, 8),
               ),
@@ -426,7 +421,7 @@ class _BranchMapNode extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: textColor.withValues(alpha: isRoot ? 0.78 : 0.58),
+                  color: textColor.withOpacity(isRoot ? 0.78 : 0.58),
                   fontSize: 11,
                 ),
               ),
@@ -468,7 +463,7 @@ class _MapNodeChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: isRoot
-            ? Colors.white.withValues(alpha: 0.15)
+            ? Colors.white.withOpacity(0.15)
             : _aura(context).surfaceSoft,
         borderRadius: BorderRadius.circular(999),
       ),
@@ -508,7 +503,7 @@ class _BranchMapTitle extends StatelessWidget {
         border: Border.all(color: _aura(context).border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
+            color: Colors.black.withOpacity(0.06),
             blurRadius: 18,
             offset: const Offset(0, 10),
           ),
@@ -583,7 +578,7 @@ class _BranchLogSheet extends StatelessWidget {
           Row(
             children: [
               CircleAvatar(
-                backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.12),
+                backgroundColor: theme.colorScheme.primary.withOpacity(0.12),
                 child: Icon(
                   _isTrunkPath(path)
                       ? Icons.account_tree_rounded
@@ -881,7 +876,7 @@ class _BranchNoteEditorState extends State<BranchNoteEditor> {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.08),
+                color: Colors.red.withOpacity(0.08),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Row(

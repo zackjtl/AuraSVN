@@ -327,7 +327,7 @@ class _ProjectReportHistoryTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               CircleAvatar(
-                backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.12),
+                backgroundColor: theme.colorScheme.primary.withOpacity(0.12),
                 child: Icon(
                   Icons.article_rounded,
                   color: theme.colorScheme.primary,
@@ -596,7 +596,7 @@ class _ProjectReportConsoleSheetState
           Row(
             children: [
               CircleAvatar(
-                backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.12),
+                backgroundColor: theme.colorScheme.primary.withOpacity(0.12),
                 child: Icon(
                   _error == null
                       ? Icons.auto_awesome_rounded
@@ -897,7 +897,7 @@ class _ProjectReportDialog extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     backgroundColor:
-                        theme.colorScheme.primary.withValues(alpha: 0.12),
+                        theme.colorScheme.primary.withOpacity(0.12),
                     child: Icon(
                       Icons.article_rounded,
                       color: theme.colorScheme.primary,
