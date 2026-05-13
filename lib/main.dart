@@ -3093,21 +3093,13 @@ class _RepositoryTile extends StatelessWidget {
       duration: const Duration(milliseconds: 160),
       curve: Curves.easeOut,
       transform: selected && isDark
-          ? (Matrix4.identity()..translate(4, 0, 0))
+          ? Matrix4.translationValues(4, 0, 0)
           : Matrix4.identity(),
       decoration: BoxDecoration(
         color: selected
             ? accentColor.withOpacity(0.10)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(isDark ? 8 : 10),
-        border: selected
-            ? Border(
-                left: BorderSide(
-                  color: accentColor,
-                  width: isDark ? 4 : 3,
-                ),
-              )
-            : null,
       ),
       child: Material(
         color: Colors.transparent,
@@ -4351,7 +4343,6 @@ BoxDecoration _dashboardStatStripDecoration(
   final edge = isDark ? _stitchGlassBorder : _aura(context).border;
   return BoxDecoration(
     color: isDark ? _stitchGlassFill : _aura(context).surfaceAlt,
-    borderRadius: BorderRadius.circular(4),
     border: Border(
       left: BorderSide(color: accentBorder, width: 3),
       top: BorderSide(color: edge, width: 1),

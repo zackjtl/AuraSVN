@@ -71,7 +71,7 @@ class _BranchMapViewState extends State<BranchMapView> {
     final center = Offset(viewport.width / 2, viewport.height / 2);
     _transformationController.value = Matrix4.identity()
       ..translate(center.dx - targetX * scale, center.dy - targetY * scale, 0)
-      ..scale(scale, scale, scale);
+      ..scale(scale);
   }
 
   @override
