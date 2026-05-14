@@ -21,12 +21,18 @@ class BranchMapView extends StatefulWidget {
     required this.data,
     required this.settings,
     this.onBranchSelected,
+    this.onBranchMapOrientationChanged,
+    this.showTitleOverlay = true,
   });
 
   final SvnRepository repository;
   final AppData data;
   final AppSettings settings;
   final ValueChanged<String>? onBranchSelected;
+  /// 與 [AppSettings.branchMapOrientation]／graphview Buchheim 一致（例如 `1` 縱向、`3` 橫向）。
+  final ValueChanged<int>? onBranchMapOrientationChanged;
+  /// 為 false 時不顯示左上角資訊卡（全頁已由外層標題列呈現時使用）。
+  final bool showTitleOverlay;
 
   @override
   State<BranchMapView> createState() => _BranchMapViewState();
@@ -38,10 +44,21 @@ class _BranchMapViewState extends State<BranchMapView> {
 
   late BranchGraphModel _model;
 
+  /// [graphview.BuchheimWalkerConfiguration] 的 orientation 常數。
+  late int _orientation;
+
+  static int _graphOrientationFromSettings(int stored) {
+    return stored == kBranchMapOrientationLeftRight
+        ? graphview.BuchheimWalkerConfiguration.ORIENTATION_LEFT_RIGHT
+        : graphview.BuchheimWalkerConfiguration.ORIENTATION_TOP_BOTTOM;
+  }
+
   @override
   void initState() {
     super.initState();
-    _model = BranchGraphModel.fromData(widget.data);
+    _orientation =
+        _graphOrientationFromSettings(widget.settings.branchMapOrientation);
+    _model = BranchGraphModel.fromData(widget.data, orientation: _orientation);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _focusPath(_model.latestBranchPath ?? _model.rootPath, scale: 0.85);
     });
@@ -50,12 +67,74 @@ class _BranchMapViewState extends State<BranchMapView> {
   @override
   void didUpdateWidget(covariant BranchMapView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final parentOrientationChanged =
+        oldWidget.settings.branchMapOrientation !=
+            widget.settings.branchMapOrientation;
+    final synced =
+        _graphOrientationFromSettings(widget.settings.branchMapOrientation);
+
     if (oldWidget.data != widget.data) {
-      _model = BranchGraphModel.fromData(widget.data);
+      _model = BranchGraphModel.fromData(
+        widget.data,
+        orientation: _orientation,
+      );
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _focusPath(_model.latestBranchPath ?? _model.rootPath, scale: 0.85);
       });
     }
+
+    if (parentOrientationChanged && synced != _orientation) {
+      setState(() {
+        _orientation = synced;
+        _model = BranchGraphModel.fromData(
+          widget.data,
+          orientation: _orientation,
+        );
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _focusPath(_model.latestBranchPath ?? _model.rootPath, scale: 0.85);
+        });
+      });
+    }
+  }
+
+  void _setOrientation(int next) {
+    if (next == _orientation) {
+      return;
+    }
+    setState(() {
+      _orientation = next;
+      _model = BranchGraphModel.fromData(
+        widget.data,
+        orientation: _orientation,
+      );
+    });
+    widget.onBranchMapOrientationChanged?.call(next);
+    void refocus() {
+      _focusPath(_model.latestBranchPath ?? _model.rootPath, scale: 0.85);
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => refocus());
+    });
+  }
+
+  bool _isHorizontalLayout() {
+    final o = _model.configuration.orientation;
+    return o ==
+            graphview.BuchheimWalkerConfiguration.ORIENTATION_LEFT_RIGHT ||
+        o ==
+            graphview.BuchheimWalkerConfiguration.ORIENTATION_RIGHT_LEFT;
+  }
+
+  graphview.Node? _graphNodeForPath(String path) {
+    for (final n in _model.graph.nodes) {
+      if (n.key?.value?.toString() == path) {
+        return n;
+      }
+    }
+    return null;
   }
 
   @override
@@ -77,12 +156,29 @@ class _BranchMapViewState extends State<BranchMapView> {
       return;
     }
 
+    const pad = 80.0;
     final viewport = context.size ?? const Size(1000, 700);
-    final depth = _model.depthFor(path);
-    final index = _model.orderFor(path);
-    final targetX = 140.0 + index * 250.0;
-    final targetY = 120.0 + depth * 180.0;
     final center = Offset(viewport.width / 2, viewport.height / 2);
+
+    final gn = _graphNodeForPath(path);
+    late final double targetX;
+    late final double targetY;
+    if (gn != null &&
+        (gn.width > 1 || gn.height > 1 || gn.x != 0 || gn.y != 0)) {
+      targetX = pad + gn.x + gn.width / 2;
+      targetY = pad + gn.y + gn.height / 2;
+    } else {
+      final depth = _model.depthFor(path);
+      final index = _model.orderFor(path);
+      if (_isHorizontalLayout()) {
+        targetX = pad + 40.0 + depth * 200.0;
+        targetY = pad + 60.0 + index * 120.0;
+      } else {
+        targetX = pad + 60.0 + index * 250.0;
+        targetY = pad + 40.0 + depth * 180.0;
+      }
+    }
+
     _transformationController.value = Matrix4.identity()
       ..translate(center.dx - targetX * scale, center.dy - targetY * scale, 0)
       ..scale(scale);
@@ -156,13 +252,55 @@ class _BranchMapViewState extends State<BranchMapView> {
               ),
             ),
           ),
+          if (widget.showTitleOverlay)
+            Positioned(
+              top: 18,
+              left: 18,
+              child: BranchMapTitle(
+                repository: widget.repository,
+                nodeCount: _model.paths.length,
+                latestPath: _model.latestBranchPath,
+              ),
+            ),
           Positioned(
-            top: 18,
             left: 18,
-            child: BranchMapTitle(
-              repository: widget.repository,
-              nodeCount: _model.paths.length,
-              latestPath: _model.latestBranchPath,
+            bottom: 18,
+            child: Material(
+              color: theme.colorScheme.surface.withOpacity(
+                theme.brightness == Brightness.dark ? 0.88 : 0.94,
+              ),
+              elevation: 2,
+              shadowColor: Colors.black26,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: SegmentedButton<int>(
+                  showSelectedIcon: false,
+                  style: ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  segments: [
+                    ButtonSegment<int>(
+                      value: graphview
+                          .BuchheimWalkerConfiguration.ORIENTATION_TOP_BOTTOM,
+                      label: Text(t(context, '縱向', 'Vertical')),
+                    ),
+                    ButtonSegment<int>(
+                      value: graphview
+                          .BuchheimWalkerConfiguration.ORIENTATION_LEFT_RIGHT,
+                      label: Text(t(context, '橫向', 'Horizontal')),
+                    ),
+                  ],
+                  selected: {_orientation},
+                  onSelectionChanged: (next) {
+                    if (next.isEmpty) {
+                      return;
+                    }
+                    _setOrientation(next.first);
+                  },
+                ),
+              ),
             ),
           ),
           Positioned(
@@ -234,7 +372,11 @@ class BranchGraphModel {
         _depths = depths,
         _orders = orders;
 
-  factory BranchGraphModel.fromData(AppData data) {
+  factory BranchGraphModel.fromData(
+    AppData data, {
+    int orientation =
+        graphview.BuchheimWalkerConfiguration.ORIENTATION_TOP_BOTTOM,
+  }) {
     final allPaths = <String>{};
     final childrenByParent = <String, Set<String>>{};
     final parentByChild = <String, String>{};
@@ -329,8 +471,7 @@ class BranchGraphModel {
       ..siblingSeparation = 64
       ..levelSeparation = 110
       ..subtreeSeparation = 56
-      ..orientation =
-          graphview.BuchheimWalkerConfiguration.ORIENTATION_TOP_BOTTOM;
+      ..orientation = orientation;
 
     return BranchGraphModel(
       graph: graph,

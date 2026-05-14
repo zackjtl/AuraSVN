@@ -124,7 +124,9 @@ class DataPanel extends StatelessWidget {
     required this.onVisualMapChanged,
     required this.onAiAnalysisPressed,
     required this.onAiHistoryPressed,
+    required this.onAiChatPressed,
     required this.onBranchSelected,
+    this.onBranchMapOrientationChanged,
   });
 
   final SvnRepository repository;
@@ -139,7 +141,9 @@ class DataPanel extends StatelessWidget {
   final ValueChanged<bool> onVisualMapChanged;
   final VoidCallback onAiAnalysisPressed;
   final VoidCallback onAiHistoryPressed;
+  final VoidCallback onAiChatPressed;
   final ValueChanged<String> onBranchSelected;
+  final ValueChanged<int>? onBranchMapOrientationChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -216,6 +220,15 @@ class DataPanel extends StatelessWidget {
                                   context,
                                   '瀏覽歷史AI分析',
                                   'Browse AI Analysis History',
+                                )),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: onAiChatPressed,
+                                icon: const Icon(Icons.chat_bubble_rounded),
+                                label: Text(t(
+                                  context,
+                                  'AI 對話助理',
+                                  'AI Chat Assistant',
                                 )),
                               ),
                               SegmentedButton<bool>(
@@ -386,6 +399,15 @@ class DataPanel extends StatelessWidget {
                                     'Browse AI Analysis History',
                                   )),
                                 ),
+                                OutlinedButton.icon(
+                                  onPressed: onAiChatPressed,
+                                  icon: const Icon(Icons.chat_bubble_rounded),
+                                  label: Text(t(
+                                    context,
+                                    'AI 對話助理',
+                                    'AI Chat Assistant',
+                                  )),
+                                ),
                                 SegmentedButton<bool>(
                                   style: ButtonStyle(
                                     backgroundColor:
@@ -502,6 +524,8 @@ class DataPanel extends StatelessWidget {
                       data: data,
                       settings: settings,
                       onBranchSelected: onBranchSelected,
+                      onBranchMapOrientationChanged:
+                          onBranchMapOrientationChanged,
                     )
                   : TopologyCard(
                       data: data,

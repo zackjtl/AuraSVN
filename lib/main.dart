@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -16,6 +16,7 @@ import 'package:aura_svn/utils/path_utils.dart';
 import 'package:aura_svn/widgets/commit_widgets.dart';
 import 'package:aura_svn/widgets/dashboard_widgets.dart';
 import 'package:aura_svn/widgets/data_panel_widgets.dart';
+import 'package:aura_svn/widgets/page_header_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -61,6 +62,7 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _showRepositoryProfiles = false;
   bool _showAiAnalysis = false;
   bool _showAiHistory = false;
+  bool _showAiChat = false;
   bool _controlPanelCollapsed = false;
   bool _outputConsoleExpanded = false;
   String? _branchCommitsPath;
@@ -84,6 +86,7 @@ class _DashboardPageState extends State<DashboardPage> {
     languageCode: 'zh_TW',
     appearanceThemeCode: 'night',
     repositories: defaultRepositories,
+    branchMapOrientation: kBranchMapOrientationTopBottom,
   );
   Process? _backendProcess;
   bool _isBackendBusy = false;
@@ -601,6 +604,7 @@ class _DashboardPageState extends State<DashboardPage> {
       languageCode: _languageCode,
       appearanceThemeCode: _appearanceThemeCode,
       repositories: _repositoryProfiles,
+      branchMapOrientation: _settings.branchMapOrientation,
     );
     try {
       await saveAppSettings(root, updated);
@@ -627,6 +631,32 @@ class _DashboardPageState extends State<DashboardPage> {
         _showSettings = false;
         _showRepositoryProfiles = false;
         _lastUpdateStatus = '設定已儲存';
+        _error = null;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _error = error.toString();
+      });
+    }
+  }
+
+  Future<void> _persistBranchMapOrientation(int orientation) async {
+    final root = _projectRoot;
+    if (root == null) {
+      return;
+    }
+    final updated =
+        _settings.copyWith(branchMapOrientation: orientation);
+    try {
+      await saveAppSettings(root, updated);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _settings = updated;
         _error = null;
       });
     } catch (error) {
@@ -1054,6 +1084,20 @@ class _DashboardPageState extends State<DashboardPage> {
                 );
               }
 
+              if (_showAiChat) {
+                return Column(
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: _buildAiChatPage(),
+                      ),
+                    ),
+                    consoleWidget(),
+                  ],
+                );
+              }
+
               if (_branchCommitsPath != null) {
                 return Column(
                   children: [
@@ -1158,32 +1202,34 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildVisualMapPage() {
-    return Stack(
+    final repo = _selectedRepository;
+    final nodeCount = _data.topology.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Positioned.fill(
+        AuraBackPageHeader(
+          onBack: () {
+            setState(() {
+              _showVisualMap = false;
+            });
+          },
+          title: t(context, '分支視覺地圖', 'Visual Branch Map'),
+          subtitle: t(
+            context,
+            '${repo.name} · $nodeCount 個節點',
+            '${repo.name} · $nodeCount nodes',
+          ),
+        ),
+        Expanded(
           child: BranchMapView(
-            repository: _selectedRepository,
+            repository: repo,
             data: _data,
             settings: _settings,
             onBranchSelected: _openBranchDetail,
-          ),
-        ),
-        Positioned(
-          top: 18,
-          right: 18,
-          child: Card(
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: FilledButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _showVisualMap = false;
-                  });
-                },
-                icon: const Icon(Icons.arrow_back_rounded),
-                label: Text(t(context, '返回主頁', 'Back to Home')),
-              ),
-            ),
+            onBranchMapOrientationChanged: (orientation) {
+              unawaited(_persistBranchMapOrientation(orientation));
+            },
+            showTitleOverlay: false,
           ),
         ),
       ],
@@ -1194,40 +1240,24 @@ class _DashboardPageState extends State<DashboardPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-            child: Row(
-              children: [
-                IconButton(
-                  tooltip: t(context, '返回主頁', 'Back to Home'),
-                  onPressed: () {
-                    setState(() {
-                      _showSettings = false;
-                    });
-                  },
-                  icon: const Icon(Icons.arrow_back_rounded),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    t(context, '設定', 'Settings'),
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                FilledButton.icon(
-                  onPressed: _saveSettings,
-                  icon: const Icon(Icons.save_rounded),
-                  label: Text(t(context, '儲存設定', 'Save Settings')),
-                ),
-              ],
-            ),
+        AuraBackPageHeader(
+          onBack: () {
+            setState(() {
+              _showSettings = false;
+            });
+          },
+          title: t(context, '設定', 'Settings'),
+          subtitle: t(
+            context,
+            '後端、Ollama、SVN 與筆記路徑',
+            'Backend, Ollama, SVN, and notes paths',
+          ),
+          trailing: FilledButton.icon(
+            onPressed: _saveSettings,
+            icon: const Icon(Icons.save_rounded),
+            label: Text(t(context, '儲存設定', 'Save Settings')),
           ),
         ),
-        const SizedBox(height: 14),
         Expanded(
           child: SettingsView(
             settings: _settings,
@@ -1277,32 +1307,24 @@ class _DashboardPageState extends State<DashboardPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-            child: Row(
-              children: [
-                IconButton(
-                  tooltip: t(context, '返回主頁', 'Back to Home'),
-                  onPressed: () {
-                    setState(() {
-                      _showRepositoryProfiles = false;
-                    });
-                  },
-                  icon: const Icon(Icons.arrow_back_rounded),
-                ),
-                const SizedBox(width: 8),
-                const Spacer(),
-                FilledButton.icon(
-                  onPressed: _saveSettings,
-                  icon: const Icon(Icons.save_rounded),
-                  label: Text(t(context, '儲存設定', 'Save Settings')),
-                ),
-              ],
-            ),
+        AuraBackPageHeader(
+          onBack: () {
+            setState(() {
+              _showRepositoryProfiles = false;
+            });
+          },
+          title: t(context, 'Repository Profiles', 'Repository Profiles'),
+          subtitle: t(
+            context,
+            '管理 SVN 庫清單',
+            'Manage the SVN repository list',
+          ),
+          trailing: FilledButton.icon(
+            onPressed: _saveSettings,
+            icon: const Icon(Icons.save_rounded),
+            label: Text(t(context, '儲存設定', 'Save Settings')),
           ),
         ),
-        const SizedBox(height: 14),
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(2, 2, 2, 28),
@@ -1357,6 +1379,18 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  Widget _buildAiChatPage() {
+    return ProjectChatPage(
+      repository: _selectedRepository,
+      settings: _settings,
+      onBack: () {
+        setState(() {
+          _showAiChat = false;
+        });
+      },
+    );
+  }
+
   void _openBranchDetail(String branchPath) {
     setState(() {
       _branchCommitsPath = branchPath;
@@ -1372,99 +1406,73 @@ class _DashboardPageState extends State<DashboardPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                IconButton(
-                  tooltip: t(context, '返回', 'Back'),
-                  onPressed: () {
-                    setState(() {
-                      _branchCommitsPath = null;
-                      _commitListExpandedRevision = null;
-                      _branchCommitsMarkdownTab = false;
-                    });
-                  },
-                  icon: const Icon(Icons.arrow_back_rounded),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        t(context, '分支詳情', 'Branch Detail'),
-                        style: GoogleFonts.inter(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.2,
-                          color: aura(context).text,
-                        ),
-                      ),
-                      SelectableText(
-                        branchPath,
-                        style: GoogleFonts.jetBrainsMono(
-                          color: aura(context).textMuted,
-                          fontSize: 12,
-                          height: 1.35,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                SegmentedButton<bool>(
-                  style: const ButtonStyle(
-                    visualDensity: VisualDensity.compact,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  showSelectedIcon: false,
-                  emptySelectionAllowed: false,
-                  segments: [
-                    ButtonSegment<bool>(
-                      value: false,
-                      label: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: Text(
-                          t(context, 'Commit 列表', 'Commit List'),
-                        ),
-                      ),
-                      icon: const Icon(Icons.receipt_long_rounded, size: 18),
-                    ),
-                    ButtonSegment<bool>(
-                      value: true,
-                      label: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: Text(
-                          t(context, 'Markdown 筆記', 'Markdown Note'),
-                        ),
-                      ),
-                      icon: const Icon(Icons.edit_note_rounded, size: 18),
-                    ),
-                  ],
-                  selected: {_branchCommitsMarkdownTab},
-                  onSelectionChanged: (Set<bool> selection) {
-                    if (selection.isEmpty) {
-                      return;
-                    }
-                    setState(() {
-                      _branchCommitsMarkdownTab = selection.first;
-                    });
-                  },
-                ),
-                const SizedBox(width: 12),
-                Chip(
-                  avatar: const Icon(Icons.receipt_long_rounded, size: 18),
-                  label: Text('${commits.length} commits'),
-                ),
-              ],
+        AuraBackPageHeader(
+          onBack: () {
+            setState(() {
+              _branchCommitsPath = null;
+              _commitListExpandedRevision = null;
+              _branchCommitsMarkdownTab = false;
+            });
+          },
+          title: t(context, '分支詳情', 'Branch Detail'),
+          subtitleWidget: SelectableText(
+            branchPath,
+            style: GoogleFonts.jetBrainsMono(
+              color: aura(context).textMuted,
+              fontSize: 12,
+              height: 1.35,
             ),
           ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SegmentedButton<bool>(
+                style: const ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                showSelectedIcon: false,
+                emptySelectionAllowed: false,
+                segments: [
+                  ButtonSegment<bool>(
+                    value: false,
+                    label: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Text(
+                        t(context, 'Commit 列表', 'Commit List'),
+                      ),
+                    ),
+                    icon: const Icon(Icons.receipt_long_rounded, size: 18),
+                  ),
+                  ButtonSegment<bool>(
+                    value: true,
+                    label: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Text(
+                        t(context, 'Markdown 筆記', 'Markdown Note'),
+                      ),
+                    ),
+                    icon: const Icon(Icons.edit_note_rounded, size: 18),
+                  ),
+                ],
+                selected: {_branchCommitsMarkdownTab},
+                onSelectionChanged: (Set<bool> selection) {
+                  if (selection.isEmpty) {
+                    return;
+                  }
+                  setState(() {
+                    _branchCommitsMarkdownTab = selection.first;
+                  });
+                },
+              ),
+              const SizedBox(width: 12),
+              Chip(
+                avatar: const Icon(Icons.receipt_long_rounded, size: 18),
+                label: Text('${commits.length} commits'),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 14),
         Expanded(
           child: _branchCommitsMarkdownTab
               ? BranchNoteEditor(
@@ -1644,7 +1652,15 @@ class _DashboardPageState extends State<DashboardPage> {
           _showAiHistory = true;
         });
       },
+      onAiChatPressed: () {
+        setState(() {
+          _showAiChat = true;
+        });
+      },
       onBranchSelected: _openBranchDetail,
+      onBranchMapOrientationChanged: (orientation) {
+        unawaited(_persistBranchMapOrientation(orientation));
+      },
     );
   }
 }

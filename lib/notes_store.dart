@@ -23,6 +23,7 @@ class AppSettings {
     required this.languageCode,
     required this.appearanceThemeCode,
     required this.repositories,
+    this.branchMapOrientation = kBranchMapOrientationTopBottom,
   });
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -43,6 +44,8 @@ class AppSettings {
       appearanceThemeCode:
           _normalizeAppearanceThemeCode(json['appearance_theme']?.toString()),
       repositories: _repositoryProfilesFromJson(json['repository_profiles']),
+      branchMapOrientation:
+          _normalizeBranchMapOrientation(json['branch_map_orientation']),
     );
   }
 
@@ -74,6 +77,42 @@ class AppSettings {
   final String appearanceThemeCode;
   final List<SvnRepository> repositories;
 
+  /// 與 graphview `BuchheimWalkerConfiguration` 一致：`1` = 由上到下，`3` = 由左到右。
+  final int branchMapOrientation;
+
+  AppSettings copyWith({
+    String? notesRootPath,
+    String? backendBaseUrl,
+    String? ollamaBaseUrl,
+    String? ollamaModel,
+    String? ollamaApiKey,
+    String? svnCommand,
+    String? svnCommandParameters,
+    String? pythonCommand,
+    String? languageCode,
+    String? appearanceThemeCode,
+    List<SvnRepository>? repositories,
+    int? branchMapOrientation,
+  }) {
+    return AppSettings(
+      notesRootPath: notesRootPath ?? this.notesRootPath,
+      backendBaseUrl: backendBaseUrl ?? this.backendBaseUrl,
+      ollamaBaseUrl: ollamaBaseUrl ?? this.ollamaBaseUrl,
+      ollamaModel: ollamaModel ?? this.ollamaModel,
+      ollamaApiKey: ollamaApiKey ?? this.ollamaApiKey,
+      svnCommand: svnCommand ?? this.svnCommand,
+      svnCommandParameters:
+          svnCommandParameters ?? this.svnCommandParameters,
+      pythonCommand: pythonCommand ?? this.pythonCommand,
+      languageCode: languageCode ?? this.languageCode,
+      appearanceThemeCode:
+          appearanceThemeCode ?? this.appearanceThemeCode,
+      repositories: repositories ?? this.repositories,
+      branchMapOrientation:
+          branchMapOrientation ?? this.branchMapOrientation,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
         'notes_root_path': notesRootPath,
         'backend_base_url': backendBaseUrl,
@@ -87,7 +126,27 @@ class AppSettings {
         'appearance_theme': appearanceThemeCode,
         'repository_profiles':
             repositories.map((repository) => repository.toJson()).toList(),
+        'branch_map_orientation': branchMapOrientation,
       };
+}
+
+/// graphview `ORIENTATION_TOP_BOTTOM`
+const int kBranchMapOrientationTopBottom = 1;
+
+/// graphview `ORIENTATION_LEFT_RIGHT`
+const int kBranchMapOrientationLeftRight = 3;
+
+int _normalizeBranchMapOrientation(Object? value) {
+  final v = switch (value) {
+    int i => i,
+    num n => n.toInt(),
+    String s => int.tryParse(s.trim()) ?? kBranchMapOrientationTopBottom,
+    _ => kBranchMapOrientationTopBottom,
+  };
+  if (v == kBranchMapOrientationLeftRight) {
+    return kBranchMapOrientationLeftRight;
+  }
+  return kBranchMapOrientationTopBottom;
 }
 
 List<SvnRepository> _repositoryProfilesFromJson(Object? value) {
@@ -252,6 +311,7 @@ Future<ProjectReportResult> generateProjectReportStream({
     final base = settings.backendBaseUrl.replaceAll(RegExp(r'/+$'), '');
     final payload = {
       'repo': repository.name,
+      'repo_svn_url': repository.url,
       'notes_root': settings.notesRootPath,
       'ollama_base_url': settings.ollamaBaseUrl,
       'model': settings.ollamaModel,

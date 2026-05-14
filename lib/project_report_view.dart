@@ -8,6 +8,7 @@ import 'package:aura_svn/models/svn_repository.dart';
 import 'package:aura_svn/notes_store.dart';
 import 'package:aura_svn/widgets/markdown_styles.dart';
 import 'package:aura_svn/widgets/misc_widgets.dart';
+import 'package:aura_svn/widgets/page_header_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -114,56 +115,14 @@ class ProjectReportAnalysisPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final returnNavColor = theme.brightness == Brightness.light
-        ? const Color(0xFF475569)
-        : const Color(0xFFDCE4E4);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Card(
-          color: _aiReportNightCardFill(context),
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
-          shape: _aiReportCardShape(context),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            child: Row(
-              children: [
-                IconButton(
-                  tooltip: t(context, '返回主頁', 'Back to Home'),
-                  onPressed: onBack,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 40,
-                    minHeight: 36,
-                  ),
-                  visualDensity: VisualDensity.compact,
-                  color: returnNavColor,
-                  icon: const Icon(Icons.arrow_back_rounded),
-                ),
-                TextButton(
-                  onPressed: onBack,
-                  style: TextButton.styleFrom(
-                    foregroundColor: returnNavColor,
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                    textStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  child: Text(t(context, '返回', 'Return')),
-                ),
-                const Spacer(),
-              ],
-            ),
-          ),
+        AuraBackPageHeader(
+          onBack: onBack,
+          title: t(context, 'AI 專案分析', 'AI Project Analysis'),
+          subtitle: repository.name,
         ),
-        const SizedBox(height: 14),
         Expanded(
           child: Card(
             color: _aiReportNightCardFill(context),
@@ -175,6 +134,379 @@ class ProjectReportAnalysisPage extends StatelessWidget {
               settings: settings,
               titleController: titleController,
               promptController: promptController,
+              showConsoleHeading: false,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// SVN 專案 AI 對話助理（沿用舊版邏輯：組 prompt 後走 [generateProjectReportStream]）。
+class ProjectChatMessage {
+  const ProjectChatMessage({
+    required this.role,
+    required this.content,
+  });
+
+  final String role;
+  final String content;
+}
+
+class ProjectChatPage extends StatefulWidget {
+  const ProjectChatPage({
+    super.key,
+    required this.repository,
+    required this.settings,
+    required this.onBack,
+  });
+
+  final SvnRepository repository;
+  final AppSettings settings;
+  final VoidCallback onBack;
+
+  @override
+  State<ProjectChatPage> createState() => _ProjectChatPageState();
+}
+
+class _ProjectChatPageState extends State<ProjectChatPage> {
+  final _inputController = TextEditingController();
+  final _scrollController = ScrollController();
+  final _messages = <ProjectChatMessage>[];
+  bool _isSending = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _messages.add(ProjectChatMessage(
+      role: 'system',
+      content: '''
+你是這個 SVN 專案的 AI 對話助理。
+請使用倉庫上下文回答問題，並在適當時主動詢問使用者是否要生成摘要報告。
+如果使用者要求報告，請直接產生 Markdown 格式摘要報告。
+你可以提出 SVN 指令或檔案查找建議，讓使用者在對話中進一步查詢。
+
+倉庫名稱：${widget.repository.name}
+Repository URL：${widget.repository.url}
+''',
+    ));
+  }
+
+  @override
+  void dispose() {
+    _inputController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _sendMessage(String text) async {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty || _isSending) {
+      return;
+    }
+    setState(() {
+      _messages.add(ProjectChatMessage(role: 'user', content: trimmed));
+      _inputController.clear();
+      _isSending = true;
+      _error = null;
+    });
+
+    final prompt = _buildPrompt();
+    try {
+      final result = await generateProjectReportStream(
+        settings: widget.settings,
+        repository: widget.repository,
+        reportTitle:
+            'Chat Assistant Response ${DateTime.now().toIso8601String()}',
+        userPrompt: prompt,
+        onLog: (_) {},
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _messages.add(ProjectChatMessage(
+          role: 'assistant',
+          content: result.report.trim(),
+        ));
+        _isSending = false;
+      });
+      _scrollToBottom();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _error = error.toString();
+        _isSending = false;
+      });
+    }
+  }
+
+  String _buildPrompt() {
+    final buffer = StringBuffer();
+    buffer.writeln('你是 SVN 倉庫的對話式 AI 助手。');
+    buffer.writeln('請以簡潔、友善的方式回答問題。');
+    buffer.writeln(
+        '如果使用者沒有直接要求報告，請先回答問題，並主動詢問是否需要生成摘要報告。');
+    buffer.writeln('如果需要，請直接生成 Markdown 格式摘要報告。');
+    buffer.writeln('你可以建議使用者查詢哪些 SVN 指令或文件。');
+    buffer.writeln();
+    buffer.writeln('倉庫背景：');
+    buffer.writeln('Repository Name: ${widget.repository.name}');
+    buffer.writeln('Repository URL: ${widget.repository.url}');
+    buffer.writeln();
+    buffer.writeln('對話紀錄：');
+    for (final message in _messages) {
+      if (message.role == 'user') {
+        buffer.writeln('User: ${message.content}');
+      } else if (message.role == 'assistant') {
+        buffer.writeln('Assistant: ${message.content}');
+      }
+    }
+    return buffer.toString();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  void _pasteExample(String example) {
+    _inputController.text = example;
+    _inputController.selection = TextSelection.fromPosition(
+      TextPosition(offset: _inputController.text.length),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final a = aura(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final examples = [
+      t(
+        context,
+        '請分析這個 SVN 專案的分支狀態，並問我是否要生成摘要報告。',
+        'Please analyze this SVN repository and ask me whether to generate a summary report.',
+      ),
+      t(
+        context,
+        '幫我找出最近一次 release 的關鍵變更，並詢問是否需要報告。',
+        'Help me find the key changes from the latest release and ask if a report is needed.',
+      ),
+      t(
+        context,
+        '我想查詢與登入相關的檔案修改，建議我下一步怎麼做。',
+        'I want to inspect login-related file changes; suggest next steps.',
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AuraBackPageHeader(
+          onBack: widget.onBack,
+          title: t(context, 'AI 對話助理', 'AI Chat Assistant'),
+          subtitle: t(
+            context,
+            '以對話提問；需要摘要報告時直接說明即可。',
+            'Ask in chat; request a summary report when you need one.',
+          ),
+        ),
+        Expanded(
+          child: Card(
+            color: _aiReportNightCardFill(context),
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            shape: _aiReportCardShape(context),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        t(context, '提示範例', 'Prompt examples'),
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: a.text,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: examples.map((example) {
+                          return ActionChip(
+                            label: Text(
+                              example,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: a.text,
+                                height: 1.35,
+                              ),
+                            ),
+                            backgroundColor: isDark
+                                ? cyberSurfaceAlt
+                                : a.surfaceSoft,
+                            side: BorderSide(color: a.border.withOpacity(0.65)),
+                            onPressed: () => _pasteExample(example),
+                          );
+                        }).toList(),
+                      ),
+                      if (_error != null) ...[
+                        const SizedBox(height: 14),
+                        Text(
+                          t(context, '發生錯誤：', 'Error:'),
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.error,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        SelectableText(
+                          _error!,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.error,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    child: ListView.builder(
+                      controller: _scrollController,
+                      itemCount: _messages.length,
+                      itemBuilder: (context, index) {
+                        final message = _messages[index];
+                        if (message.role == 'system') {
+                          return const SizedBox.shrink();
+                        }
+                        final isUser = message.role == 'user';
+                        return Align(
+                          alignment: isUser
+                              ? Alignment.centerRight
+                              : Alignment.centerLeft,
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(vertical: 8),
+                            padding: const EdgeInsets.all(14),
+                            constraints: const BoxConstraints(maxWidth: 820),
+                            decoration: BoxDecoration(
+                              color: isUser
+                                  ? (isDark
+                                      ? cyberAccent.withOpacity(0.22)
+                                      : theme.colorScheme.primaryContainer)
+                                  : (isDark
+                                      ? cyberSurfaceAlt
+                                      : a.surfaceSoft),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: isUser
+                                    ? cyberAccent.withOpacity(0.45)
+                                    : a.border.withOpacity(0.65),
+                              ),
+                            ),
+                            child: isUser
+                                ? SelectableText(
+                                    message.content,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: isDark
+                                          ? stitchPrimaryFixed
+                                          : theme.colorScheme.onPrimaryContainer,
+                                    ),
+                                  )
+                                : MarkdownBody(
+                                    data: message.content,
+                                    selectable: true,
+                                    styleSheet: auraMarkdownStyle(context),
+                                  ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                const Divider(height: 1),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _inputController,
+                          minLines: 1,
+                          maxLines: 4,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: a.text,
+                          ),
+                          decoration: InputDecoration(
+                            filled: true,
+                            fillColor:
+                                isDark ? cyberMainPanel : theme.colorScheme.surface,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide(color: a.border),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide(
+                                color: a.border.withOpacity(0.75),
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide(
+                                color: isDark ? cyberAccent : a.accent,
+                                width: 1.4,
+                              ),
+                            ),
+                            hintText: t(
+                              context,
+                              '輸入你的問題，或請我生成摘要報告...',
+                              'Type your question or ask for a summary report...',
+                            ),
+                            hintStyle: TextStyle(color: a.textMuted),
+                          ),
+                          onSubmitted: _sendMessage,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      FilledButton(
+                        onPressed: _isSending
+                            ? null
+                            : () => _sendMessage(_inputController.text),
+                        child: _isSending
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Text(t(context, '送出', 'Send')),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -235,56 +567,19 @@ class _ProjectReportHistoryPageState extends State<ProjectReportHistoryPage> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Card(
-          color: _aiReportNightCardFill(context),
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
-          shape: _aiReportCardShape(context),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-            child: Row(
-              children: [
-                IconButton(
-                  tooltip: t(context, '返回主頁', 'Back to Home'),
-                  onPressed: widget.onBack,
-                  icon: const Icon(Icons.arrow_back_rounded),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        t(context, '瀏覽歷史AI分析', 'Browse AI Analysis History'),
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      Text(
-                        widget.repository.name,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: aura(context).textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _refresh,
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: Text(t(context, '重新整理', 'Refresh')),
-                ),
-              ],
-            ),
+        AuraBackPageHeader(
+          onBack: widget.onBack,
+          title: t(context, '瀏覽歷史AI分析', 'Browse AI Analysis History'),
+          subtitle: widget.repository.name,
+          trailing: OutlinedButton.icon(
+            onPressed: _refresh,
+            icon: const Icon(Icons.refresh_rounded),
+            label: Text(t(context, '重新整理', 'Refresh')),
           ),
         ),
-        const SizedBox(height: 14),
         Expanded(
           child: Card(
             color: _aiReportNightCardFill(context),
@@ -553,12 +848,15 @@ class _ProjectReportConsoleSheet extends StatefulWidget {
     required this.settings,
     this.titleController,
     this.promptController,
+    this.showConsoleHeading = true,
   });
 
   final SvnRepository repository;
   final AppSettings settings;
   final TextEditingController? titleController;
   final TextEditingController? promptController;
+  /// 為 false 時不顯示「AI查詢」大標（頁面頂列已顯示時使用）。
+  final bool showConsoleHeading;
 
   @override
   State<_ProjectReportConsoleSheet> createState() =>
@@ -718,7 +1016,8 @@ class _ProjectReportConsoleSheetState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-          Row(
+          if (widget.showConsoleHeading)
+            Row(
             children: [
               CircleAvatar(
                 radius: 18,
@@ -766,7 +1065,7 @@ class _ProjectReportConsoleSheetState
                 ),
             ],
           ),
-          const SizedBox(height: 22),
+          if (widget.showConsoleHeading) const SizedBox(height: 22),
           Theme(
             data: fieldTheme,
             child: Column(
