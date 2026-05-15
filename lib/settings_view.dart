@@ -639,6 +639,7 @@ class RepositoryProfilesEditorState extends State<RepositoryProfilesEditor> {
               draft.url.text.trim(),
               subtitle: draft.subtitle.text.trim(),
             ))
+        .where((r) => r.name.isNotEmpty && r.url.isNotEmpty)
         .toList();
   }
 
@@ -654,9 +655,6 @@ class RepositoryProfilesEditorState extends State<RepositoryProfilesEditor> {
   }
 
   void _deleteProfile(int index) {
-    if (_drafts.length <= 1) {
-      return;
-    }
     setState(() {
       _drafts.removeAt(index).dispose();
     });
@@ -707,6 +705,50 @@ class RepositoryProfilesEditorState extends State<RepositoryProfilesEditor> {
           ),
         ),
         const SizedBox(height: 14),
+        if (_drafts.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 28),
+            decoration: BoxDecoration(
+              color: profileTileFill,
+              borderRadius: BorderRadius.circular(5),
+              border: Border.all(color: aura(context).border),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.inventory_2_outlined,
+                  size: 40,
+                  color: aura(context).textSubtle,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  t(
+                    context,
+                    '尚未設定任何 Repository',
+                    'No repositories configured',
+                  ),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: aura(context).textMuted,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  t(
+                    context,
+                    '請按「新增庫」建立第一個 Profile，或儲存以清空清單。',
+                    'Use Add Repository to create one, or save to keep an empty list.',
+                  ),
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: aura(context).textSubtle,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ..._drafts.asMap().entries.map((entry) {
           final index = entry.key;
           final draft = entry.value;
@@ -742,9 +784,7 @@ class RepositoryProfilesEditorState extends State<RepositoryProfilesEditor> {
                       ),
                       IconButton(
                         tooltip: t(context, '刪除', 'Delete'),
-                        onPressed: _drafts.length <= 1
-                            ? null
-                            : () => _deleteProfile(index),
+                        onPressed: () => _deleteProfile(index),
                         icon: const Icon(Icons.delete_outline_rounded),
                         color: Colors.red,
                       ),

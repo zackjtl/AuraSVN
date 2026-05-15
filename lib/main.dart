@@ -53,8 +53,10 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  SvnRepository _selectedRepository = defaultRepositories.first;
+  SvnRepository? _selectedRepository;
   List<SvnRepository> _repositoryProfiles = List.of(defaultRepositories);
+
+  bool get _hasRepository => _repositoryProfiles.isNotEmpty;
   AppData _data = AppData.empty();
   Directory? _projectRoot;
   bool _isInitializing = true;
@@ -136,13 +138,18 @@ class _DashboardPageState extends State<DashboardPage> {
       final settings = await loadAppSettings(root);
       final repositories = settings.repositories;
       final savedName = settings.selectedRepositoryName;
-      final selectedRepository = savedName.isNotEmpty
-          ? repositories.firstWhere(
-              (r) => r.name == savedName,
-              orElse: () => repositories.first,
-            )
-          : repositories.first;
-      final data = await readOutput(root, selectedRepository);
+      SvnRepository? selectedRepository;
+      if (repositories.isNotEmpty) {
+        selectedRepository = savedName.isNotEmpty
+            ? repositories.firstWhere(
+                (r) => r.name == savedName,
+                orElse: () => repositories.first,
+              )
+            : repositories.first;
+      }
+      final data = selectedRepository != null
+          ? await readOutput(root, selectedRepository)
+          : AppData.empty();
       if (!mounted) {
         return;
       }
@@ -164,7 +171,9 @@ class _DashboardPageState extends State<DashboardPage> {
         _pythonController.text = settings.pythonCommand;
         _data = data;
         _isInitializing = false;
-        _lastUpdateStatus = data.isEmpty ? '尚無本地資料' : '已載入本地資料';
+        _lastUpdateStatus = repositories.isEmpty
+            ? '尚未設定 Repository'
+            : (data.isEmpty ? '尚無本地資料' : '已載入本地資料');
       });
       Future<void>.microtask(_connectExistingBackendOnStartup);
     } catch (error) {
@@ -598,6 +607,10 @@ class _DashboardPageState extends State<DashboardPage> {
       return;
     }
 
+    final nextSelected = _repositoryProfiles.isEmpty
+        ? null
+        : (matchRepository(_repositoryProfiles, _selectedRepository) ??
+            _repositoryProfiles.first);
     final updated = AppSettings(
       notesRootPath: _notesRootController.text.trim(),
       backendBaseUrl: _backendUrlController.text.trim(),
@@ -611,18 +624,18 @@ class _DashboardPageState extends State<DashboardPage> {
       appearanceThemeCode: _appearanceThemeCode,
       repositories: _repositoryProfiles,
       branchMapOrientation: _settings.branchMapOrientation,
+      selectedRepositoryName: nextSelected?.name ?? '',
     );
     try {
       await saveAppSettings(root, updated);
       if (!mounted) {
         return;
       }
-      final nextSelected =
-          matchRepository(updated.repositories, _selectedRepository) ??
-              updated.repositories.first;
-      final nextData = nextSelected.name == _selectedRepository.name
-          ? _data
-          : await readOutput(root, nextSelected);
+      final nextData = nextSelected == null
+          ? AppData.empty()
+          : (nextSelected.name == _selectedRepository?.name
+              ? _data
+              : await readOutput(root, nextSelected));
       if (!mounted) {
         return;
       }
@@ -634,9 +647,13 @@ class _DashboardPageState extends State<DashboardPage> {
         _branchCommitsPath = null;
         _commitListExpandedRevision = null;
         _branchCommitsMarkdownTab = false;
+        _showVisualMap = false;
+        _showAiChat = false;
         _showSettings = false;
         _showRepositoryProfiles = false;
-        _lastUpdateStatus = '設定已儲存';
+        _lastUpdateStatus = _repositoryProfiles.isEmpty
+            ? '尚未設定 Repository'
+            : (nextData.isEmpty ? '尚無本地資料' : '設定已儲存');
         _error = null;
       });
     } catch (error) {
@@ -711,7 +728,7 @@ class _DashboardPageState extends State<DashboardPage> {
     final token = ++_repoUpdateCheckToken;
     final localRevision = _data.latestCommit?.revision;
     try {
-      if (mounted && repository.name == _selectedRepository.name) {
+      if (mounted && repository.name == _selectedRepository?.name) {
         setState(() {
           _lastUpdateStatus = t(
             context,
@@ -723,7 +740,7 @@ class _DashboardPageState extends State<DashboardPage> {
       final remoteRevision = await _fetchRemoteHeadRevision(repository);
       if (!mounted ||
           token != _repoUpdateCheckToken ||
-          repository.name != _selectedRepository.name) {
+          repository.name != _selectedRepository?.name) {
         return;
       }
 
@@ -774,7 +791,7 @@ class _DashboardPageState extends State<DashboardPage> {
     } catch (error) {
       if (!mounted ||
           token != _repoUpdateCheckToken ||
-          repository.name != _selectedRepository.name) {
+          repository.name != _selectedRepository?.name) {
         return;
       }
       setState(() {
@@ -844,7 +861,7 @@ class _DashboardPageState extends State<DashboardPage> {
         action: SnackBarAction(
           label: t(context, '更新', 'Update'),
           onPressed: () {
-            if (repository.name == _selectedRepository.name) {
+            if (repository.name == _selectedRepository?.name) {
               unawaited(_runUpdate());
             }
           },
@@ -855,11 +872,20 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _reloadData() async {
     final root = _projectRoot;
-    if (root == null) {
+    final repo = _selectedRepository;
+    if (root == null || repo == null) {
+      if (mounted) {
+        setState(() {
+          _data = AppData.empty();
+          if (!_hasRepository) {
+            _lastUpdateStatus = '尚未設定 Repository';
+          }
+        });
+      }
       return;
     }
     try {
-      final data = await readOutput(root, _selectedRepository);
+      final data = await readOutput(root, repo);
       if (!mounted) {
         return;
       }
@@ -879,7 +905,8 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _runUpdate() async {
     final root = _projectRoot;
-    if (root == null || _isRefreshing) {
+    final repo = _selectedRepository;
+    if (root == null || _isRefreshing || repo == null) {
       return;
     }
 
@@ -892,7 +919,7 @@ class _DashboardPageState extends State<DashboardPage> {
     });
 
     try {
-      final configPath = await _writeRuntimeConfig(root, _selectedRepository);
+      final configPath = await _writeRuntimeConfig(root, repo);
       final loaderPath = joinPath(root.path, 'scripts', 'svn_to_ai_loader.py');
       final pythonCommand = _pythonController.text.trim().isEmpty
           ? defaultPythonCommand()
@@ -926,7 +953,7 @@ class _DashboardPageState extends State<DashboardPage> {
         throw Exception('更新失敗，exit code=$exitCode。請查看執行紀錄。');
       }
 
-      final data = await readOutput(root, _selectedRepository);
+      final data = await readOutput(root, repo);
       if (!mounted) {
         return;
       }
@@ -1062,10 +1089,68 @@ class _DashboardPageState extends State<DashboardPage> {
                 );
               }
 
-              if (_showAiChat) {
+              if (_showAiChat && _hasRepository) {
                 return Padding(
                   padding: const EdgeInsets.all(24),
                   child: _buildAiChatPage(),
+                );
+              }
+
+              if (!_hasRepository) {
+                final isCompactEmpty = constraints.maxWidth < 1000;
+                if (isCompactEmpty) {
+                  return Column(
+                    children: [
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            children: [
+                              SizedBox(
+                                height: 820,
+                                child: _buildControlPanel(),
+                              ),
+                              const SizedBox(height: 20),
+                              SizedBox(
+                                height: 420,
+                                child: _buildNoRepositoryEmptyState(),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      consoleWidget(),
+                    ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.only(
+                        left: MediaQuery.viewPaddingOf(context).left,
+                      ),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        curve: Curves.easeOut,
+                        width: _controlPanelCollapsed ? 80 : 304,
+                        child: _buildControlPanel(),
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: _buildNoRepositoryEmptyState(),
+                            ),
+                          ),
+                          consoleWidget(),
+                        ],
+                      ),
+                    ),
+                  ],
                 );
               }
 
@@ -1166,7 +1251,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildVisualMapPage() {
-    final repo = _selectedRepository;
+    final repo = _selectedRepository!;
     final nodeCount = _data.topology.length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1326,9 +1411,79 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  Widget _buildNoRepositoryEmptyState() {
+    final theme = Theme.of(context);
+    final a = aura(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final fill = isDark ? cyberSidebar : const Color(0xFFE8EBF0);
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 440),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 36),
+          decoration: BoxDecoration(
+            color: fill,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.inventory_2_outlined,
+                size: 48,
+                color: a.textSubtle,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                t(
+                  context,
+                  '尚未設定 Repository',
+                  'No repository configured',
+                ),
+                textAlign: TextAlign.center,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: a.text,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                t(
+                  context,
+                  '請至 Repository Profiles 新增至少一個 SVN 庫，儲存後即可載入拓撲與 Commit 資料。',
+                  'Open Repository Profiles to add an SVN repository, then save to load topology and commits.',
+                ),
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: a.textMuted,
+                  height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 22),
+              FilledButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _showRepositoryProfiles = true;
+                  });
+                },
+                icon: const Icon(Icons.storage_rounded),
+                label: Text(
+                  t(context, '開啟 Repository Profiles', 'Open Repository Profiles'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildAiChatPage() {
+    final repo = _selectedRepository!;
     return ProjectChatPage(
-      repository: _selectedRepository,
+      repository: repo,
       settings: _settings,
       focusBranchPath: _aiChatFocusBranchPath,
       focusCommitRevision: _aiChatFocusCommitRevision,
@@ -1338,6 +1493,9 @@ class _DashboardPageState extends State<DashboardPage> {
 
   void _openCheckoutDialog({String? branchPath, int? revision}) {
     final repo = _selectedRepository;
+    if (repo == null) {
+      return;
+    }
     final url = branchPath == null || branchPath.trim().isEmpty
         ? repo.url.trim()
         : svnCheckoutUrlForBranch(repo.url.trim(), branchPath);
@@ -1353,6 +1511,9 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _openAiChatForRepository() {
+    if (!_hasRepository) {
+      return;
+    }
     setState(() {
       _aiChatFocusBranchPath = null;
       _aiChatFocusCommitRevision = null;
@@ -1469,7 +1630,7 @@ class _DashboardPageState extends State<DashboardPage> {
         Expanded(
           child: _branchCommitsMarkdownTab
               ? BranchNoteEditor(
-                  repository: _selectedRepository,
+                  repository: _selectedRepository!,
                   settings: _settings,
                   branchPath: branchPath,
                   expanded: true,
@@ -1505,7 +1666,7 @@ class _DashboardPageState extends State<DashboardPage> {
                               final rev = commit.revision;
                               return CommitTimelineItem(
                                 commit: commit,
-                                repository: _selectedRepository,
+                                repository: _selectedRepository!,
                                 settings: _settings,
                                 isLatest: index == 0,
                                 expanded:
@@ -1640,7 +1801,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildDataPanel({required bool isCompact}) {
     return DataPanel(
-      repository: _selectedRepository,
+      repository: _selectedRepository!,
       data: _data,
       error: _error,
       isCompact: isCompact,

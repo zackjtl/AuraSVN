@@ -6,6 +6,71 @@ import 'package:aura_svn/widgets/status_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+
+/// 側邊欄底部版本列（來自 pubspec / build 嵌入）。
+class _SidebarVersionFooter extends StatelessWidget {
+  const _SidebarVersionFooter({this.collapsed = false});
+
+  final bool collapsed;
+
+  static Future<PackageInfo>? _packageInfoFuture;
+
+  static Future<PackageInfo> _loadPackageInfo() {
+    return _packageInfoFuture ??= PackageInfo.fromPlatform();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final versionColor = isDark
+        ? cyberTextMuted
+        : const Color(0xFF94A3B8);
+
+    return FutureBuilder<PackageInfo>(
+      future: _loadPackageInfo(),
+      builder: (context, snapshot) {
+        final label = snapshot.hasData
+            ? (collapsed
+                ? 'v${snapshot.data!.version}'
+                : 'v${snapshot.data!.version} (${snapshot.data!.buildNumber})')
+            : '';
+
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            collapsed ? 6 : 16,
+            6,
+            collapsed ? 6 : 16,
+            collapsed ? 10 : 14,
+          ),
+          child: collapsed
+              ? Center(
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 9,
+                      height: 1.2,
+                      letterSpacing: 0.2,
+                      color: versionColor,
+                    ),
+                  ),
+                )
+              : Text(
+                  label,
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 10,
+                    letterSpacing: 0.35,
+                    color: versionColor,
+                  ),
+                ),
+        );
+      },
+    );
+  }
+}
 
 String _repoAbbr(String name) {
   if (name.isEmpty) return '?';
@@ -20,7 +85,7 @@ String _repoAbbr(String name) {
 
 class ControlPanel extends StatelessWidget {
   const ControlPanel({
-    required this.selectedRepository,
+    this.selectedRepository,
     required this.repositories,
     required this.isRefreshing,
     required this.status,
@@ -33,7 +98,7 @@ class ControlPanel extends StatelessWidget {
     required this.onSettingsPressed,
   });
 
-  final SvnRepository selectedRepository;
+  final SvnRepository? selectedRepository;
   final List<SvnRepository> repositories;
   final bool isRefreshing;
   final String status;
@@ -44,6 +109,8 @@ class ControlPanel extends StatelessWidget {
   final VoidCallback onUpdatePressed;
   final VoidCallback onRepositoryProfilesPressed;
   final VoidCallback onSettingsPressed;
+
+  bool get _hasRepositories => repositories.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -104,25 +171,33 @@ class ControlPanel extends StatelessWidget {
               color: auraTokens.border.withOpacity(0.4),
             ),
             const SizedBox(height: 14),
-            Tooltip(
-              message: selectedRepository.name,
-              child: CircleAvatar(
-                backgroundColor:
-                    theme.colorScheme.primary.withOpacity(0.14),
-                child: Text(
-                  _repoAbbr(selectedRepository.name),
-                  style: TextStyle(
-                    color: theme.colorScheme.primary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 11,
+            if (selectedRepository != null)
+              Tooltip(
+                message: selectedRepository!.name,
+                child: CircleAvatar(
+                  backgroundColor:
+                      theme.colorScheme.primary.withOpacity(0.14),
+                  child: Text(
+                    _repoAbbr(selectedRepository!.name),
+                    style: TextStyle(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11,
+                    ),
                   ),
                 ),
+              )
+            else
+              Icon(
+                Icons.inventory_2_outlined,
+                size: 28,
+                color: auraTokens.textSubtle,
               ),
-            ),
             const SizedBox(height: 12),
             IconButton(
               tooltip: t(context, '執行增量更新', 'Run incremental update'),
-              onPressed: isRefreshing ? null : onUpdatePressed,
+              onPressed:
+                  isRefreshing || !_hasRepositories ? null : onUpdatePressed,
               icon: isRefreshing
                   ? const SizedBox(
                       width: 18,
@@ -141,6 +216,8 @@ class ControlPanel extends StatelessWidget {
               onPressed: isRefreshing ? null : onSettingsPressed,
               icon: const Icon(Icons.settings_rounded),
             ),
+            const Spacer(),
+            const _SidebarVersionFooter(collapsed: true),
           ],
         ),
       );
@@ -198,17 +275,38 @@ class ControlPanel extends StatelessWidget {
                     ),
                   ),
                 ),
-                RepositorySelector(
-                  selectedRepository: selectedRepository,
-                  repositories: repositories,
-                  enabled: !isRefreshing,
-                  onRepositorySelected: onRepositorySelected,
-                ),
-                const SizedBox(height: 18),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: InfoLine(label: 'URL', value: selectedRepository.url),
-                ),
+                if (!_hasRepositories)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+                    child: Text(
+                      t(
+                        context,
+                        '尚未設定 Repository',
+                        'No repository configured',
+                      ),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: auraTokens.textMuted,
+                        height: 1.35,
+                      ),
+                    ),
+                  )
+                else
+                  RepositorySelector(
+                    selectedRepository: selectedRepository!,
+                    repositories: repositories,
+                    enabled: !isRefreshing,
+                    onRepositorySelected: onRepositorySelected,
+                  ),
+                if (selectedRepository != null) ...[
+                  const SizedBox(height: 18),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: InfoLine(
+                      label: 'URL',
+                      value: selectedRepository!.url,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 18),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -232,7 +330,9 @@ class ControlPanel extends StatelessWidget {
                 SizedBox(
                   width: double.infinity,
                   child: TextButton.icon(
-                    onPressed: isRefreshing ? null : onUpdatePressed,
+                    onPressed: isRefreshing || !_hasRepositories
+                        ? null
+                        : onUpdatePressed,
                     icon: isRefreshing
                         ? SizedBox(
                             width: 18,
@@ -266,6 +366,7 @@ class ControlPanel extends StatelessWidget {
               ],
             ),
           ),
+          const _SidebarVersionFooter(),
         ],
       ),
     );

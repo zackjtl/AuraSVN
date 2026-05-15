@@ -195,15 +195,16 @@ class _TargetScopeCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final a = aura(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderColor = a.border.withOpacity(isDark ? 0.28 : 0.38);
+    // 無框線：夜晚略亮於畫布底、白天淺灰底。
+    final fillColor = isDark
+        ? cyberSidebar
+        : const Color(0xFFE8EBF0);
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.transparent,
+        color: fillColor,
         borderRadius: BorderRadius.circular(5),
-        border: Border.all(color: borderColor, width: 0.75),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),

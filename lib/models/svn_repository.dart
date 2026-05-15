@@ -28,8 +28,11 @@ class SvnRepository {
 
 SvnRepository? matchRepository(
   List<SvnRepository> repositories,
-  SvnRepository selected,
+  SvnRepository? selected,
 ) {
+  if (selected == null) {
+    return null;
+  }
   for (final repository in repositories) {
     if (repository.name == selected.name) {
       return repository;

@@ -167,7 +167,7 @@ List<SvnRepository> _repositoryProfilesFromJson(Object? value) {
       .where((repository) =>
           repository.name.trim().isNotEmpty && repository.url.trim().isNotEmpty)
       .toList();
-  return repositories.isEmpty ? defaultRepositories : repositories;
+  return repositories;
 }
 
 String _normalizeLanguageCode(String? value) {
@@ -225,9 +225,6 @@ Future<void> saveAppSettings(
   }
   if (settings.pythonCommand.trim().isEmpty) {
     throw Exception('Python Command 不可為空。');
-  }
-  if (settings.repositories.isEmpty) {
-    throw Exception('至少需要一個 Repository Profile。');
   }
   final seenTitles = <String>{};
   for (final repository in settings.repositories) {

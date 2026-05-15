@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.14)
 project(runner LANGUAGES CXX)
 
+# Windows 執行檔圖示：與 assets/branding/favicon4.ico 同步
+configure_file(
+  "${CMAKE_SOURCE_DIR}/../assets/branding/favicon4.ico"
+  "${CMAKE_CURRENT_SOURCE_DIR}/resources/app_icon.ico"
+  COPYONLY
+)
+
 # Define the application target. To change its name, change BINARY_NAME in the
 # top-level CMakeLists.txt, not the value here, or `flutter run` will no longer
 # work.
