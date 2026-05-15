@@ -468,18 +468,18 @@ class DiffLineContentRow extends StatelessWidget {
         };
       case UnifiedDiffPresentation.embedDark:
         background = switch (line.kind) {
-          DiffLineKind.added => const Color(0xFF0A2F2C),
-          DiffLineKind.removed => const Color(0xFF2D1B1E),
-          DiffLineKind.hunk => const Color(0xFF1A2332),
-          DiffLineKind.meta => const Color(0xFF161B22),
+          DiffLineKind.added => const Color(0xFF1B2A1F),   // 暗綠，配 Ayu Mirage
+          DiffLineKind.removed => const Color(0xFF2A1F1F), // 暗紅
+          DiffLineKind.hunk => const Color(0xFF222736),    // 偏底色
+          DiffLineKind.meta => const Color(0xFF1E2330),    // 接近底色
           DiffLineKind.context => Colors.transparent,
         };
         textColor = switch (line.kind) {
-          DiffLineKind.added => const Color(0xFF56D4D0),
-          DiffLineKind.removed => const Color(0xFFFF9B9B),
-          DiffLineKind.hunk => const Color(0xFF79C0FF),
-          DiffLineKind.meta => const Color(0xFF8B949E),
-          DiffLineKind.context => const Color(0xFFE6EDF3),
+          DiffLineKind.added => const Color(0xFF69B458),   // Ayu green
+          DiffLineKind.removed => const Color(0xFFFF9B9B), // 保留紅色
+          DiffLineKind.hunk => const Color(0xFF519ABA),    // Ayu blue
+          DiffLineKind.meta => const Color(0xFF707A8C),    // subtle
+          DiffLineKind.context => const Color(0xFFCBCCC6), // 主文字色
         };
     }
     final marker = switch (line.kind) {

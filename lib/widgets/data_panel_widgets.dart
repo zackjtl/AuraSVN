@@ -244,6 +244,10 @@ class DataPanel extends StatelessWidget {
                                 ),
                               FilledButton.icon(
                                 onPressed: onAiChatPressed,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: const Color(0xFF4caf50),
+                                  foregroundColor: Colors.white,
+                                ),
                                 icon: const Icon(Icons.auto_awesome_rounded),
                                 label: Text(t(
                                   context,

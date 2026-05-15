@@ -31,7 +31,11 @@ const double kBranchCommitListPadLeftDay = 8;
 const double kBranchCommitListPadLeftNight = 12;
 const double kBranchCommitListPadRight = 12;
 /// 白天 Commit 時間軸垂直線與節點顏色。
-const Color kCommitTimelineDayColor = Color(0xFF6688CC);
+const Color kCommitTimelineDayColor = Color(0xFF90AADD);
+/// 白天 Commit 卡片展開時左側強調邊條。
+const Color kCommitExpandedEdgeLight = Color(0xFF60A5FA);
+/// 夜晚 Commit 卡片展開時左側強調邊條。
+const Color kCommitExpandedEdgeDark = Color(0xFF6898CB);
 /// 路徑列「檔名 + 獨立視窗」區塊內為圖示保留的寬度（含間距）。
 const double _kPathTitleOpenWindowReserve = 34.0;
 
@@ -207,16 +211,16 @@ class _TopologyNodeTileState extends State<TopologyNodeTile> {
     final children = widget.node.children;
     final path = widget.path;
 
-    // 根據路徑決定左側邊框顏色
+    // 根據路徑決定左側邊框顏色（Ayu Mirage 色系）
     final Color baseAccentColor;
     if (path.startsWith('/branches')) {
-      baseAccentColor = const Color(0xFFBD93F9); // 亮紫
+      baseAccentColor = const Color(0xFFA074C4); // 紫
     } else if (path.startsWith('/trunk')) {
-      baseAccentColor = const Color(0xFF74F4FE);
+      baseAccentColor = const Color(0xFF73D0FF); // 淺藍
     } else if (path.startsWith('/tags')) {
-      baseAccentColor = const Color(0xFFFFB4AB);
+      baseAccentColor = const Color(0xFF69B458); // 綠
     } else {
-      baseAccentColor = const Color(0xFF2C3333);
+      baseAccentColor = const Color(0xFF707A8C); // 灰藍
     }
 
     // 選中狀態覆蓋色條，icon 保持原始路徑色
@@ -806,7 +810,7 @@ class CommitTileState extends State<CommitTile> {
                   left: BorderSide(
                     width: hl ? 2 : 1,
                     color: hl
-                        ? stitchPrimaryFixed
+                        ? (isDark ? kCommitExpandedEdgeDark : kCommitExpandedEdgeLight)
                         : (isDark
                             ? stitchGlassBorder
                             : auraTokens.border.withOpacity(0.65)),
@@ -836,6 +840,7 @@ class CommitTileState extends State<CommitTile> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     InkWell(
+                      overlayColor: MaterialStateProperty.all(Colors.transparent),
                       onTap: () => widget.onExpandToggle(),
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(14, 8, 12, 8),
@@ -1262,9 +1267,7 @@ class CommitTileState extends State<CommitTile> {
                                                                         .ellipsis,
                                                                 style:
                                                                     TextStyle(
-                                                                  color: theme
-                                                                      .colorScheme
-                                                                      .primary,
+                                                                  color: aura(context).text,
                                                                   fontWeight:
                                                                       FontWeight
                                                                           .w700,

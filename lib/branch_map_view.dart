@@ -552,6 +552,9 @@ class _BranchMapNodeState extends State<BranchMapNode> {
     final fillColor = widget.isRoot
         ? (isDark ? const Color(0xFF1E3A8A) : const Color(0xFFEFF6FF))
         : auraTokens.surfaceAlt;
+    final hoverFillColor = isDark
+        ? Color.alphaBlend(Colors.white.withOpacity(0.08), fillColor)
+        : Color.alphaBlend(Colors.black.withOpacity(0.04), fillColor);
     final textColor = widget.isRoot
         ? (isDark ? Colors.white : const Color(0xFF1E3A8A))
         : auraTokens.text;
@@ -568,20 +571,27 @@ class _BranchMapNodeState extends State<BranchMapNode> {
           Material(
             color: Colors.transparent,
             child: InkWell(
+              overlayColor: MaterialStateProperty.all(Colors.transparent),
               onTap: widget.onTap,
               borderRadius: BorderRadius.circular(5),
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                curve: Curves.easeOut,
                 width: 190,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: fillColor,
+                  color: _hoverCard ? hoverFillColor : fillColor,
                   borderRadius: BorderRadius.circular(5),
-                  border: Border.all(color: borderColor, width: 1.4),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.10 : 0.06),
-                      blurRadius: isDark ? 16 : 12,
-                      offset: Offset(0, isDark ? 8 : 6),
+                      color: Colors.black.withOpacity(isDark ? 0.28 : 0.10),
+                      blurRadius: isDark ? 20 : 14,
+                      offset: Offset(0, isDark ? 8 : 5),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withOpacity(isDark ? 0.10 : 0.04),
+                      blurRadius: isDark ? 6 : 4,
+                      offset: Offset(0, isDark ? 2 : 1),
                     ),
                   ],
                 ),
@@ -650,7 +660,7 @@ class _BranchMapNodeState extends State<BranchMapNode> {
           if (_hoverCard && widget.onCheckoutPressed != null)
             Positioned(
               top: 2,
-              right: widget.onAiPressed != null ? 36 : 2,
+              right: widget.onAiPressed != null ? 22 : 0,
               child: Material(
                 color: Colors.transparent,
                 child: IconButton(
@@ -662,11 +672,8 @@ class _BranchMapNodeState extends State<BranchMapNode> {
                   style: IconButton.styleFrom(
                     backgroundColor: Colors.transparent,
                     foregroundColor: auraTokens.textMuted,
-                    side: BorderSide(
-                      color: auraTokens.border.withOpacity(isDark ? 0.5 : 0.55),
-                    ),
-                    minimumSize: const Size(32, 30),
-                    maximumSize: const Size(36, 30),
+                    minimumSize: const Size(26, 24),
+                    maximumSize: const Size(28, 24),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     visualDensity: VisualDensity.compact,
                   ),
@@ -674,7 +681,7 @@ class _BranchMapNodeState extends State<BranchMapNode> {
                   onPressed: widget.onCheckoutPressed,
                   icon: Icon(
                     Icons.download_for_offline_outlined,
-                    size: 16,
+                    size: 14,
                     color: auraTokens.accent,
                   ),
                 ),
@@ -683,7 +690,7 @@ class _BranchMapNodeState extends State<BranchMapNode> {
           if (_hoverCard && widget.onAiPressed != null)
             Positioned(
               top: 2,
-              right: 2,
+              right: 0,
               child: Material(
                 color: Colors.transparent,
                 child: IconButton(
@@ -695,11 +702,8 @@ class _BranchMapNodeState extends State<BranchMapNode> {
                   style: IconButton.styleFrom(
                     backgroundColor: Colors.transparent,
                     foregroundColor: auraTokens.textMuted,
-                    side: BorderSide(
-                      color: auraTokens.border.withOpacity(isDark ? 0.5 : 0.55),
-                    ),
-                    minimumSize: const Size(32, 30),
-                    maximumSize: const Size(36, 30),
+                    minimumSize: const Size(26, 24),
+                    maximumSize: const Size(28, 24),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     visualDensity: VisualDensity.compact,
                   ),
@@ -707,7 +711,7 @@ class _BranchMapNodeState extends State<BranchMapNode> {
                   onPressed: widget.onAiPressed,
                   icon: Icon(
                     Icons.auto_awesome_outlined,
-                    size: 16,
+                    size: 14,
                     color: auraTokens.accent,
                   ),
                 ),

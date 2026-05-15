@@ -202,18 +202,55 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final a = aura(context);
-
-    return Dialog(
-      backgroundColor: isDark ? cyberSurface : theme.colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: a.border),
+    // 關閉 M3 Dialog／按鈕的 surface tint 與 fromSeed 偏暖 secondary，改為冷色主題。
+    final dialogBg = isDark ? cyberMainPanel : theme.colorScheme.surface;
+    final onAccentFg = isDark ? cyberMainPanel : Colors.white;
+    final checkoutTheme = theme.copyWith(
+      dialogTheme: theme.dialogTheme.copyWith(
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        backgroundColor: dialogBg,
       ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 700, minWidth: 480),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(28),
-          child: Column(
+      colorScheme: theme.colorScheme.copyWith(
+        primary: isDark ? cyberAccent : a.accent,
+        onPrimary: onAccentFg,
+        surface: isDark ? cyberSurfaceAlt : theme.colorScheme.surface,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          elevation: 0,
+          backgroundColor: isDark ? cyberAccent : a.accent,
+          foregroundColor: onAccentFg,
+          disabledBackgroundColor: a.textMuted.withOpacity(0.22),
+          disabledForegroundColor: a.textMuted.withOpacity(0.55),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: a.textMuted,
+          side: BorderSide(color: a.border.withOpacity(isDark ? 0.55 : 0.75)),
+        ),
+      ),
+      inputDecorationTheme: theme.inputDecorationTheme.copyWith(
+        fillColor: isDark ? cyberSurfaceAlt : a.surfaceAlt,
+        prefixIconColor: isDark ? cyberTextMuted : a.textMuted,
+      ),
+    );
+
+    return Theme(
+      data: checkoutTheme,
+      child: Dialog(
+        backgroundColor: dialogBg,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: a.border),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 700, minWidth: 480),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(28),
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -388,6 +425,7 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

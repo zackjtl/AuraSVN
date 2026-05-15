@@ -441,12 +441,12 @@ class SettingsView extends StatelessWidget {
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: theme.brightness == Brightness.dark
-                      ? const Color(0xFF1A0800)
+                      ? const Color(0xFF241800)
                       : const Color(0xFFFFF0E8),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: theme.brightness == Brightness.dark
-                        ? const Color(0xFF6B2000)
+                        ? const Color(0xFF5C3A00)
                         : const Color(0xFFE57A5A),
                   ),
                 ),

@@ -1,24 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// 夜晚：全畫布基底色（使用者指定）
-const cyberBase = Color(0xFF0A1125);
-/// 夜晚：主內容欄（比基底色更深）
-const cyberMainPanel = Color(0xFF050A16);
-/// 夜晚：左側控制欄（比基底色略淺）
-const cyberSidebar = Color(0xFF131F38);
+/// 夜晚：全畫布基底色（Ayu Mirage）
+const cyberBase = Color(0xFF1F2430);
+/// 夜晚：主內容欄（比基底色略深）
+const cyberMainPanel = Color(0xFF1A1F2E);
+/// 夜晚：左側控制欄（比基底色略亮）
+const cyberSidebar = Color(0xFF252B3B);
 /// 夜晚：與側欄同階的 surface（分支列、玻璃底等）
 const cyberSurface = cyberSidebar;
 /// 夜晚：卡片／區塊略抬升的底色
-const cyberSurfaceAlt = Color(0xFF0E172B);
-const cyberSurfaceSoft = Color(0xFF0A1324);
-const cyberAccent = Color(0xFF00DBE7);
-const cyberViolet = Color(0xFFEBB2FF);
-const cyberText = Color(0xFFDCE4E4);
-const cyberTextMuted = Color(0xFFB9CACB);
-const cyberTextSubtle = Color(0xFF849495);
-/// 夜晚：卡片與區塊邊線（使用者指定）
-const cyberBorder = Color(0xFF1E3A5F);
+const cyberSurfaceAlt = Color(0xFF232938);
+const cyberSurfaceSoft = Color(0xFF1D2335);
+const cyberAccent = Color(0xFFFFCD66);
+const cyberViolet = Color(0xFFA074C4);
+const cyberText = Color(0xFFCBCCC6);
+const cyberTextMuted = Color(0xFFB3B4B6);
+const cyberTextSubtle = Color(0xFF707A8C);
+/// 夜晚：卡片與區塊邊線
+const cyberBorder = Color(0xFF2D3447);
 
 /// 舊名相容：多處用 `cyberBackground` 當全畫布底
 const cyberBackground = cyberBase;
@@ -34,18 +34,18 @@ const dayTextMuted = Color(0xFF475569);
 const dayTextSubtle = Color(0xFF64748B);
 const dayBorder = Color(0xFFE2E8F0);
 
-/// code.html (Stitch) — 對齊新夜晚藍調
+/// code.html (Stitch) — 對齊 Ayu Mirage 夜晚調
 const stitchSurfaceContainerHigh = cyberSidebar;
 const stitchSurfaceDim = cyberMainPanel;
-const stitchPrimaryFixed = Color(0xFF74F5FF);
+const stitchPrimaryFixed = Color(0xFFFFCD66);
 const stitchGlassFill = cyberMainPanel;
 const stitchGlassBorder = Color(0x1AFFFFFF);
 
 /// 頂部儀表條左邊框強調色（Commits → Nodes → Backend → Author）
-const metricStripLeftCommits = Color(0xFF836A91);
-const metricStripLeftNodes = Color(0xFF71EEF8);
-const metricStripLeftBackend = Color(0xFFFFB86B);
-const metricStripLeftAuthor = Color(0xFFFF6B9D);
+const metricStripLeftCommits = Color(0xFFA074C4);
+const metricStripLeftNodes = Color(0xFF519ABA);
+const metricStripLeftBackend = Color(0xFFE2C08B);
+const metricStripLeftAuthor = Color(0xFF69B458);
 
 final appearanceThemeNotifier = ValueNotifier<String>('night');
 
