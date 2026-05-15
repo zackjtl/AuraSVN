@@ -134,15 +134,13 @@ class TopologyCard extends StatelessWidget {
         return a.key.compareTo(b.key);
       });
 
-    return Material(
-      color: Colors.transparent,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Topology',
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Topology',
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
@@ -176,7 +174,6 @@ class TopologyCard extends StatelessWidget {
             ),
           ],
         ),
-      ),
     );
   }
 }

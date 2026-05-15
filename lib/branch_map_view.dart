@@ -202,7 +202,7 @@ class _BranchMapViewState extends State<BranchMapView> {
     }
 
     final mapBg = theme.brightness == Brightness.dark
-        ? cyberMainPanel
+        ? cyberBase
         : aura(context).surfaceAlt;
 
     return Material(

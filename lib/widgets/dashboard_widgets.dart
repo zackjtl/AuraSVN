@@ -31,41 +31,30 @@ class _SidebarVersionFooter extends StatelessWidget {
       future: _loadPackageInfo(),
       builder: (context, snapshot) {
         final label = snapshot.hasData
-            ? (collapsed
-                ? 'v${snapshot.data!.version}'
-                : 'v${snapshot.data!.version} (${snapshot.data!.buildNumber})')
+            ? 'Version: ${snapshot.data!.version} (${snapshot.data!.buildNumber})'
             : '';
 
         return Padding(
           padding: EdgeInsets.fromLTRB(
-            collapsed ? 6 : 16,
+            collapsed ? 6 : 12,
             6,
-            collapsed ? 6 : 16,
+            collapsed ? 6 : 12,
             collapsed ? 10 : 14,
           ),
-          child: collapsed
-              ? Center(
-                  child: Text(
-                    label,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.jetBrainsMono(
-                      fontSize: 9,
-                      height: 1.2,
-                      letterSpacing: 0.2,
-                      color: versionColor,
-                    ),
-                  ),
-                )
-              : Text(
-                  label,
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 10,
-                    letterSpacing: 0.35,
-                    color: versionColor,
-                  ),
-                ),
+          child: Center(
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: collapsed ? 3 : 2,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: collapsed ? 9 : 10,
+                height: 1.25,
+                letterSpacing: 0.2,
+                color: versionColor,
+              ),
+            ),
+          ),
         );
       },
     );
@@ -125,15 +114,8 @@ class ControlPanel extends StatelessWidget {
           color: auraTokens.border.withOpacity(isDark ? 0.22 : 0.4),
         ),
       ),
-      boxShadow: isDark
-          ? [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.5),
-                blurRadius: 28,
-                offset: const Offset(4, 0),
-              ),
-            ]
-          : null,
+      // 夜晚僅靠右邊線分隔；陰影會在主內容左緣（Topology 標題旁）形成偏暗色塊。
+      boxShadow: null,
     );
 
     final sidebarActionGray = isDark

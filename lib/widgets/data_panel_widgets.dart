@@ -10,64 +10,27 @@ import 'package:aura_svn/widgets/status_widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// 頂部區與主內容之間：細青色邊線 + 向下漸層漏光（對齊 Stitch 類 HTML 效果）。
+/// 分隔線下方至 Topology 標題的垂直間距（與白天羽化區高度一致）。
+const double kDataPanelTopologyTitleTopInset = 14;
+
+/// 夜晚：頂部儀表區與下方主內容皆為 [cyberBase]；分隔線略淺 + 與白天相同的標題上間距。
 class DataPanelTopLeakDivider extends StatelessWidget {
   const DataPanelTopLeakDivider();
 
-  /// 漸層向下延伸，拉長羽化；整體亮度靠低 alpha 壓低。
-  static const double _glowExtent = 16;
-
-  /// 下方 [TopologyCard]／[BranchMapView] 上移與此區重疊的像素，縮小羽化下方空白。
-  static const double topologyPullUpOverlap = 50;
+  static const double topologyPullUpOverlap = 0;
 
   @override
   Widget build(BuildContext context) {
-    final line = Color.alphaBlend(
-      cyberAccent.withOpacity(0.11),
-      cyberBase,
-    );
-    return SizedBox(
-      height: 1 + _glowExtent,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(height: 1, color: line),
-          Expanded(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  stops: const [0.0, 0.2, 0.42, 0.65, 0.86, 1.0],
-                  colors: [
-                    Color.alphaBlend(
-                      cyberAccent.withOpacity(0.038),
-                      cyberBase,
-                    ),
-                    Color.alphaBlend(
-                      cyberAccent.withOpacity(0.022),
-                      cyberBase,
-                    ),
-                    Color.alphaBlend(
-                      cyberAccent.withOpacity(0.012),
-                      cyberBase,
-                    ),
-                    Color.alphaBlend(
-                      cyberAccent.withOpacity(0.006),
-                      cyberBase,
-                    ),
-                    Color.alphaBlend(
-                      cyberAccent.withOpacity(0.002),
-                      cyberBase,
-                    ),
-                    cyberBase,
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(height: 1, color: cyberBorder),
+        const ColoredBox(
+          color: cyberBase,
+          child: SizedBox(height: kDataPanelTopologyTitleTopInset),
+        ),
+      ],
     );
   }
 }
@@ -76,7 +39,7 @@ class DataPanelTopLeakDivider extends StatelessWidget {
 class DataPanelTopFeatherDividerLight extends StatelessWidget {
   const DataPanelTopFeatherDividerLight({super.key});
 
-  static const double _glowExtent = 14;
+  static const double _glowExtent = kDataPanelTopologyTitleTopInset;
 
   /// 與 [DataPanelTopLeakDivider.topologyPullUpOverlap] 相同用途（亮色主題）。
   static const double topologyPullUpOverlap = 42;
@@ -162,7 +125,7 @@ class DataPanel extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final auraTokens = aura(context);
 
-    return Column(
+    final panel = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         isDark
@@ -540,27 +503,33 @@ class DataPanel extends StatelessWidget {
         else
           const DataPanelTopFeatherDividerLight(),
         Expanded(
-          child: data.isEmpty
-              ? const EmptyDataCard()
-              : showVisualMap
-                  ? BranchMapView(
-                      repository: repository,
-                      data: data,
-                      settings: settings,
-                      onBranchSelected: onBranchSelected,
-                      onAiChatForBranch: onAiChatForBranch,
-                      onCheckoutBranch: onCheckoutBranch,
-                      onBranchMapOrientationChanged:
-                          onBranchMapOrientationChanged,
-                    )
-                  : TopologyCard(
-                      data: data,
-                      onBranchSelected: onBranchSelected,
-                      onAiChatForBranch: onAiChatForBranch,
-                      onCheckoutBranch: onCheckoutBranch,
-                    ),
+          child: ColoredBox(
+            color: isDark ? cyberBase : Colors.transparent,
+            child: data.isEmpty
+                ? const EmptyDataCard()
+                : showVisualMap
+                    ? BranchMapView(
+                        repository: repository,
+                        data: data,
+                        settings: settings,
+                        onBranchSelected: onBranchSelected,
+                        onAiChatForBranch: onAiChatForBranch,
+                        onCheckoutBranch: onCheckoutBranch,
+                        onBranchMapOrientationChanged:
+                            onBranchMapOrientationChanged,
+                      )
+                    : TopologyCard(
+                        data: data,
+                        onBranchSelected: onBranchSelected,
+                        onAiChatForBranch: onAiChatForBranch,
+                        onCheckoutBranch: onCheckoutBranch,
+                      ),
+          ),
         ),
       ],
     );
+
+    if (!isDark) return panel;
+    return ColoredBox(color: cyberBase, child: panel);
   }
 }

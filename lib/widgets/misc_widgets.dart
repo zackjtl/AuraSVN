@@ -120,7 +120,7 @@ class EmptyDataCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final panelBg = theme.brightness == Brightness.dark
-        ? cyberMainPanel
+        ? cyberBase
         : aura(context).surfaceAlt;
 
     return Material(
