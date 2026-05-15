@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "svn_branch_viewer_ui" "\0"
+            VALUE "FileDescription", "Aura SVN" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "svn_branch_viewer_ui" "\0"
+            VALUE "InternalName", "AuraSVN" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "svn_branch_viewer_ui.exe" "\0"
-            VALUE "ProductName", "svn_branch_viewer_ui" "\0"
+            VALUE "OriginalFilename", "AuraSVN.exe" "\0"
+            VALUE "ProductName", "Aura SVN" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

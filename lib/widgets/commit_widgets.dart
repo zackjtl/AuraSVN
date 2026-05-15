@@ -1,4 +1,3 @@
-import 'dart:math' show max;
 import 'dart:ui' show ImageFilter;
 
 import 'package:aura_svn/app_theme.dart';
@@ -17,15 +16,106 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+/// 分支／Commit 列表標題旁小圖示槽寬（固定，避免 hover 時版面跳動）。
+const double _kListActionSlotSize = 26;
+const double _kListActionIconSize = 15;
+
+/// Branch／Commit 列表卡片外框圓角（Topology 與 Commit 列一致）。
+const double _kBranchCommitListCardRadius = 5.0;
+/// Commit 卡片相對於時間軸可用寬度的比例（其餘左右均分為外側留白）。
+const double _kCommitCardWidthFactor = 0.9;
+/// 時間軸列內：卡片區左（軌道+縫）+ 右 padding，與 [CommitTimelineItem] 內 [Padding] 一致。
+const double _kCommitTimelineLaneHorizontal = 36;
+/// Commit 列表 ListView 與標題對齊用之水平 padding（須與 `main.dart` 分支詳情頁一致）。
+const double kBranchCommitListPadLeftDay = 8;
+const double kBranchCommitListPadLeftNight = 12;
+const double kBranchCommitListPadRight = 12;
+/// 白天 Commit 時間軸垂直線與節點顏色。
+const Color kCommitTimelineDayColor = Color(0xFF6688CC);
+/// 路徑列「檔名 + 獨立視窗」區塊內為圖示保留的寬度（含間距）。
+const double _kPathTitleOpenWindowReserve = 34.0;
+
+/// Commit 內嵌 diff 載入中時，先展開的固定高度（載入完成後改由內容決定高度）。
+const double _kEmbeddedDiffLoadingBodyHeight = 220;
+
+/// ListView 單列可用寬 [listContentWidth] 時，時間軸＋卡片塊總寬。
+double commitTimelineBlockWidthForListContent(double listContentWidth) {
+  final inner = (listContentWidth - _kCommitTimelineLaneHorizontal)
+      .clamp(0.0, double.infinity);
+  return _kCommitTimelineLaneHorizontal + inner * _kCommitCardWidthFactor;
+}
+
+/// 置中時塊左側留白（list 內容左緣至時間軸左緣）。
+double commitTimelineCenteringLeading(double listContentWidth) {
+  final b = commitTimelineBlockWidthForListContent(listContentWidth);
+  return ((listContentWidth - b) / 2).clamp(0.0, double.infinity);
+}
+
+/// 分支詳情區寬 [sectionInnerWidth] 下，「Commit 歷史」標題列左 padding（與時間軸左緣對齊）。
+double commitHistoryTitlePaddingLeft(
+  double sectionInnerWidth, {
+  required bool isDark,
+}) {
+  final listPadL =
+      isDark ? kBranchCommitListPadLeftNight : kBranchCommitListPadLeftDay;
+  final listPadR = kBranchCommitListPadRight;
+  final contentW =
+      (sectionInnerWidth - listPadL - listPadR).clamp(0.0, double.infinity);
+  return listPadL + commitTimelineCenteringLeading(contentW);
+}
+
+/// 白天 Branch list 與 Commit list 卡片共用之 mouse-over 底色。
+Color _dayBranchCommitCardHoverFill(AuraThemeColors a) {
+  final base = a.surface;
+  return Color.lerp(base, a.surfaceSoft, 0.52) ?? base;
+}
+
+/// 無框線；hover 時亮色主題為淺灰疊加，暗色為略亮於 [blendBase]。
+ButtonStyle _listActionIconStyle({
+  required bool isDark,
+  required Color blendBase,
+  required Color iconColor,
+}) {
+  return ButtonStyle(
+    minimumSize:
+        const MaterialStatePropertyAll(Size(_kListActionSlotSize, _kListActionSlotSize)),
+    maximumSize:
+        const MaterialStatePropertyAll(Size(_kListActionSlotSize, _kListActionSlotSize)),
+    padding: MaterialStateProperty.all(EdgeInsets.zero),
+    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    visualDensity: VisualDensity.compact,
+    elevation: const MaterialStatePropertyAll(0),
+    shadowColor: const MaterialStatePropertyAll(Colors.transparent),
+    shape: MaterialStateProperty.all(
+      RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+    ),
+    side: const MaterialStatePropertyAll(BorderSide.none),
+    overlayColor: MaterialStateProperty.all(Colors.transparent),
+    backgroundColor: MaterialStateProperty.resolveWith((states) {
+      if (states.contains(MaterialState.hovered)) {
+        return isDark
+            ? Color.alphaBlend(Colors.white.withOpacity(0.12), blendBase)
+            : Color.alphaBlend(Colors.black.withOpacity(0.08), blendBase);
+      }
+      return Colors.transparent;
+    }),
+    foregroundColor: MaterialStateProperty.all(iconColor),
+    iconColor: MaterialStateProperty.all(iconColor),
+  );
+}
 
 class TopologyCard extends StatelessWidget {
   const TopologyCard({
     required this.data,
     required this.onBranchSelected,
+    this.onAiChatForBranch,
+    this.onCheckoutBranch,
   });
 
   final AppData data;
   final ValueChanged<String> onBranchSelected;
+  final ValueChanged<String>? onAiChatForBranch;
+  final ValueChanged<String>? onCheckoutBranch;
 
   @override
   Widget build(BuildContext context) {
@@ -40,29 +130,25 @@ class TopologyCard extends StatelessWidget {
         return a.key.compareTo(b.key);
       });
 
-    final isDark = theme.brightness == Brightness.dark;
-    final panelBg = isDark ? cyberMainPanel : aura(context).surfaceAlt;
-
     return Material(
-      color: panelBg,
+      color: Colors.transparent,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Transform.translate(
-              offset: const Offset(0, -50),
-              child: Text(
-                'Topology',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+            Text(
+              'Topology',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w600,
               ),
             ),
+            const SizedBox(height: 12),
             Expanded(
-              child: Transform.translate(
-                offset: const Offset(0, -38),
+              child: Scrollbar(
+                thumbVisibility: true,
                 child: ListView.separated(
+                  padding: const EdgeInsets.only(right: 14),
                   itemCount: nodes.length,
                   separatorBuilder: (context, index) =>
                       const SizedBox(height: 10),
@@ -73,6 +159,12 @@ class TopologyCard extends StatelessWidget {
                       node: entry.value,
                       selected: false,
                       onTap: () => onBranchSelected(entry.key),
+                      onCheckoutPressed: onCheckoutBranch == null
+                          ? null
+                          : () => onCheckoutBranch!(entry.key),
+                      onAiChatPressed: onAiChatForBranch == null
+                          ? null
+                          : () => onAiChatForBranch!(entry.key),
                     );
                   },
                 ),
@@ -85,87 +177,102 @@ class TopologyCard extends StatelessWidget {
   }
 }
 
-class TopologyNodeTile extends StatelessWidget {
+class TopologyNodeTile extends StatefulWidget {
   const TopologyNodeTile({
     required this.path,
     required this.node,
     required this.selected,
     required this.onTap,
+    this.onCheckoutPressed,
+    this.onAiChatPressed,
   });
 
   final String path;
   final BranchNode node;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback? onCheckoutPressed;
+  final VoidCallback? onAiChatPressed;
+
+  @override
+  State<TopologyNodeTile> createState() => _TopologyNodeTileState();
+}
+
+class _TopologyNodeTileState extends State<TopologyNodeTile> {
+  bool _hovering = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final children = node.children;
+    final children = widget.node.children;
+    final path = widget.path;
 
     // 根據路徑決定左側邊框顏色
-    Color accentBorderColor;
-    
+    final Color baseAccentColor;
     if (path.startsWith('/branches')) {
-      // /branches: #80678e
-      accentBorderColor = const Color(0xFF80678E);
+      baseAccentColor = const Color(0xFFBD93F9); // 亮紫
     } else if (path.startsWith('/trunk')) {
-      // /trunk: #74f4fe
-      accentBorderColor = const Color(0xFF74F4FE);
+      baseAccentColor = const Color(0xFF74F4FE);
     } else if (path.startsWith('/tags')) {
-      // /tags: #ffb4ab
-      accentBorderColor = const Color(0xFFFFB4AB);
+      baseAccentColor = const Color(0xFFFFB4AB);
     } else {
-      // 預設
-      accentBorderColor = const Color(0xFF2C3333);
+      baseAccentColor = const Color(0xFF2C3333);
     }
 
-    // 選中狀態覆蓋
-    if (selected) {
-      accentBorderColor = theme.colorScheme.primary.withOpacity(0.35);
-    }
+    // 選中狀態覆蓋色條，icon 保持原始路徑色
+    final Color accentBorderColor = widget.selected
+        ? theme.colorScheme.primary.withOpacity(0.35)
+        : baseAccentColor;
 
     final isDark = theme.brightness == Brightness.dark;
-    final cardFill = isDark
-        ? cyberSurfaceSoft
-        : aura(context).surface;
-    final hover = isDark
-        ? cyberSurfaceSoft
-        : aura(context).surfaceSoft;
+    final a = aura(context);
+    final cardFill = isDark ? cyberSurfaceSoft : a.surface;
+    // 白天：surface 與 surfaceAlt 過近；hover 改向 surfaceSoft 插值，對比更清楚。
+    final hoverFill = isDark
+        ? Color.alphaBlend(Colors.white.withOpacity(0.05), cyberSurfaceSoft)
+        : _dayBranchCommitCardHoverFill(a);
+    final hasBranchActions = widget.onCheckoutPressed != null ||
+        widget.onAiChatPressed != null;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(5.0),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          hoverColor: hover,
-          child: Container(
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(_kBranchCommitListCardRadius),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            curve: Curves.easeOut,
             padding: const EdgeInsets.all(14),
             decoration: dashboardStatStripDecoration(
               context,
               accentBorder: accentBorderColor,
             ).copyWith(
-              color: cardFill,
+              color: _hovering ? hoverFill : cardFill,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    if (node.kind == 'tag')
+                    if (widget.node.kind == 'tag')
                       Icon(
                         Icons.sell_outlined,
                         color: theme.colorScheme.primary,
                       )
                     else if (isTrunkPath(path))
-                      _NarrowSolidUpTriangle(
+                      Icon(
+                        Icons.account_tree_outlined,
                         color: theme.colorScheme.primary,
                       )
                     else
                       Icon(
                         Icons.call_split_rounded,
-                        color: theme.colorScheme.primary,
+                        color: baseAccentColor,
                       ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -176,6 +283,68 @@ class TopologyNodeTile extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (hasBranchActions)
+                      SizedBox(
+                        width: _kListActionSlotSize * 2,
+                        height: _kListActionSlotSize,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            SizedBox(
+                              width: _kListActionSlotSize,
+                              height: _kListActionSlotSize,
+                              child: widget.onCheckoutPressed != null
+                                  ? Tooltip(
+                                      message: t(
+                                        context,
+                                        'Checkout 此分支',
+                                        'Checkout this branch',
+                                      ),
+                                      child: IconButton(
+                                        style: _listActionIconStyle(
+                                          isDark: isDark,
+                                          blendBase:
+                                              _hovering ? hoverFill : cardFill,
+                                          iconColor: a.accent,
+                                        ),
+                                        onPressed: widget.onCheckoutPressed,
+                                        icon: Icon(
+                                          Icons.download_for_offline_outlined,
+                                          size: _kListActionIconSize,
+                                        ),
+                                      ),
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                            SizedBox(
+                              width: _kListActionSlotSize,
+                              height: _kListActionSlotSize,
+                              child: widget.onAiChatPressed != null
+                                  ? Tooltip(
+                                      message: t(
+                                        context,
+                                        '以此分支開啟 AI助理',
+                                        'Open AI Assistant for this branch',
+                                      ),
+                                      child: IconButton(
+                                        style: _listActionIconStyle(
+                                          isDark: isDark,
+                                          blendBase:
+                                              _hovering ? hoverFill : cardFill,
+                                          iconColor: a.accent,
+                                        ),
+                                        onPressed: widget.onAiChatPressed,
+                                        icon: Icon(
+                                          Icons.auto_awesome_outlined,
+                                          size: _kListActionIconSize,
+                                        ),
+                                      ),
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 10),
@@ -183,20 +352,20 @@ class TopologyNodeTile extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    SmallChip(label: 'kind', value: node.kind ?? 'root'),
+                    SmallChip(label: 'kind', value: widget.node.kind ?? 'root'),
                     SmallChip(
                         label: 'origin_rev',
-                        value: node.originRev?.toString() ?? '-'),
+                        value: widget.node.originRev?.toString() ?? '-'),
                     SmallChip(
                         label: 'parent_rev',
-                        value: node.parentRev?.toString() ?? '-'),
+                        value: widget.node.parentRev?.toString() ?? '-'),
                     SmallChip(
                         label: 'children', value: children.length.toString()),
                   ],
                 ),
-                if (node.parent != null) ...[
+                if (widget.node.parent != null) ...[
                   const SizedBox(height: 10),
-                  InfoLine(label: 'parent', value: node.parent!),
+                  InfoLine(label: 'parent', value: widget.node.parent!),
                 ],
                 if (children.isNotEmpty) ...[
                   const SizedBox(height: 10),
@@ -230,88 +399,18 @@ class TopologyNodeTile extends StatelessWidget {
 }
 
 /// 朝上實心箭頭：窄三角箭頭 + 底邊下的箭尾；尺寸對齊鄰近 branch 的 Material Icon。
-class _NarrowSolidUpTriangle extends StatelessWidget {
-  const _NarrowSolidUpTriangle({required this.color});
 
-  final Color color;
-
-  static const double _box = 24;
-  /// 與同列 Material Icon（預設 24）視覺接近；仍略窄以保留「主幹」辨識。
-  static const double _w = 9;
-  static const double _h = 17;
-  static const double _headH = 8;
-  static const double _tailW = 3;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: _box,
-      height: _box,
-      child: Center(
-        child: CustomPaint(
-          size: const Size(_w, _h),
-          painter: _NarrowSolidUpTrianglePainter(
-            color: color,
-            headHeight: _headH,
-            tailWidth: _tailW,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _NarrowSolidUpTrianglePainter extends CustomPainter {
-  _NarrowSolidUpTrianglePainter({
-    required this.color,
-    required this.headHeight,
-    required this.tailWidth,
-  });
-
-  final Color color;
-  final double headHeight;
-  final double tailWidth;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color;
-
-    final apex = Offset(size.width / 2, 0);
-    final baseY = headHeight;
-    final bl = Offset(0, baseY);
-    final br = Offset(size.width, baseY);
-    final head = Path()
-      ..moveTo(apex.dx, apex.dy)
-      ..lineTo(bl.dx, bl.dy)
-      ..lineTo(br.dx, br.dy)
-      ..close();
-    canvas.drawPath(head, paint);
-
-    final tailH = (size.height - baseY).clamp(0.0, double.infinity);
-    if (tailH > 0) {
-      final left = size.width / 2 - tailWidth / 2;
-      canvas.drawRect(
-        Rect.fromLTWH(left, baseY, tailWidth, tailH),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _NarrowSolidUpTrianglePainter oldDelegate) {
-    return oldDelegate.color != color ||
-        oldDelegate.headHeight != headHeight ||
-        oldDelegate.tailWidth != tailWidth;
-  }
-}
-
-class CommitTimelineItem extends StatelessWidget {
+class CommitTimelineItem extends StatefulWidget {
   const CommitTimelineItem({
+    super.key,
     required this.commit,
     required this.expanded,
     required this.onExpandToggle,
     this.repository,
     this.settings,
+    this.isLatest = false,
+    this.onAiAnalyzeCommit,
+    this.onCheckoutPressed,
   });
 
   final CommitRecord commit;
@@ -319,35 +418,86 @@ class CommitTimelineItem extends StatelessWidget {
   final VoidCallback onExpandToggle;
   final SvnRepository? repository;
   final AppSettings? settings;
+  final bool isLatest;
+  final VoidCallback? onAiAnalyzeCommit;
+  final VoidCallback? onCheckoutPressed;
+
+  @override
+  State<CommitTimelineItem> createState() => _CommitTimelineItemState();
+}
+
+class _CommitTimelineItemState extends State<CommitTimelineItem> {
+  bool _hoverRow = false;
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Positioned(
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: 22,
-          child: CustomPaint(
-            painter: TimelineRailPainter(
-              lineColor: stitchPrimaryFixed,
-              nodeColor: stitchPrimaryFixed,
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // 夜間維持 cyan 軌道；白天線與節點皆為 #6688CC。
+    final railLineColor =
+        isDark ? stitchPrimaryFixed : kCommitTimelineDayColor;
+    final railNodeColor =
+        isDark ? stitchPrimaryFixed : kCommitTimelineDayColor;
+    final railLineOpacity = isDark ? 0.32 : 1.0;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hoverRow = true),
+      onExit: (_) => setState(() => _hoverRow = false),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final listW = constraints.maxWidth;
+          final inner = (listW - _kCommitTimelineLaneHorizontal)
+              .clamp(0.0, double.infinity);
+          final tileW = inner * _kCommitCardWidthFactor;
+          final blockW = commitTimelineBlockWidthForListContent(listW);
+          final lead = commitTimelineCenteringLeading(listW);
+
+          return Padding(
+            padding: EdgeInsets.symmetric(horizontal: lead),
+            child: SizedBox(
+              width: blockW,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 22,
+                    child: CustomPaint(
+                      painter: TimelineRailPainter(
+                        lineColor: railLineColor,
+                        nodeColor: railNodeColor,
+                        lineOpacity: railLineOpacity,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      left: 24,
+                      right: 12,
+                      bottom: 16,
+                    ),
+                    child: SizedBox(
+                      width: tileW,
+                      child: CommitTile(
+                        commit: widget.commit,
+                        repository: widget.repository,
+                        settings: widget.settings,
+                        expanded: widget.expanded,
+                        isLatest: widget.isLatest,
+                        onExpandToggle: widget.onExpandToggle,
+                        onCheckoutPressed: widget.onCheckoutPressed,
+                        onAiAnalyzeCommit: widget.onAiAnalyzeCommit,
+                        showHoverActions: _hoverRow,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(left: 28, bottom: 16),
-          child: CommitTile(
-            commit: commit,
-            repository: repository,
-            settings: settings,
-            expanded: expanded,
-            onExpandToggle: onExpandToggle,
-          ),
-        ),
-      ],
+          );
+        },
+      ),
     );
   }
 }
@@ -356,10 +506,13 @@ class TimelineRailPainter extends CustomPainter {
   TimelineRailPainter({
     required this.lineColor,
     required this.nodeColor,
+    this.lineOpacity = 0.32,
   });
 
   final Color lineColor;
   final Color nodeColor;
+  /// 垂直線透明度（與 [lineColor] 相乘）；白天版可略高以便在淺底辨識。
+  final double lineOpacity;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -367,7 +520,7 @@ class TimelineRailPainter extends CustomPainter {
     const nodeY = 22.0;
 
     final linePaint = Paint()
-      ..color = lineColor.withOpacity(0.32)
+      ..color = lineColor.withOpacity(lineOpacity.clamp(0.0, 1.0))
       ..strokeWidth = 2
       ..strokeCap = StrokeCap.butt;
 
@@ -385,7 +538,8 @@ class TimelineRailPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant TimelineRailPainter oldDelegate) {
     return oldDelegate.lineColor != lineColor ||
-        oldDelegate.nodeColor != nodeColor;
+        oldDelegate.nodeColor != nodeColor ||
+        oldDelegate.lineOpacity != lineOpacity;
   }
 }
 
@@ -396,6 +550,10 @@ class CommitTile extends StatefulWidget {
     required this.onExpandToggle,
     this.repository,
     this.settings,
+    this.isLatest = false,
+    this.onCheckoutPressed,
+    this.onAiAnalyzeCommit,
+    this.showHoverActions = false,
   });
 
   final CommitRecord commit;
@@ -403,6 +561,10 @@ class CommitTile extends StatefulWidget {
   final VoidCallback onExpandToggle;
   final SvnRepository? repository;
   final AppSettings? settings;
+  final bool isLatest;
+  final VoidCallback? onCheckoutPressed;
+  final VoidCallback? onAiAnalyzeCommit;
+  final bool showHoverActions;
 
   @override
   State<CommitTile> createState() => CommitTileState();
@@ -422,8 +584,11 @@ class CommitTileState extends State<CommitTile> {
         _expandedDiffPaths.remove(key);
       } else {
         _expandedDiffPaths.add(key);
-        shouldFetch =
-            !_diffResults.containsKey(key) && !_diffLoadingPaths.contains(key);
+        // Copy operations (branch creation) can involve thousands of files;
+        // skip diff fetch to avoid hanging the UI.
+        shouldFetch = path.copyFromPath == null &&
+            !_diffResults.containsKey(key) &&
+            !_diffLoadingPaths.contains(key);
       }
     });
     if (shouldFetch) {
@@ -600,6 +765,25 @@ class CommitTileState extends State<CommitTile> {
     final commit = widget.commit;
     final isDark = theme.brightness == Brightness.dark;
     final hl = widget.expanded;
+    final ticketIds = commit.ticketId
+        .split(';')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    final hasCommitActions = widget.onCheckoutPressed != null ||
+        widget.onAiAnalyzeCommit != null;
+    final showCommitActions = widget.showHoverActions || widget.expanded;
+    final cardFillLight = auraTokens.surface;
+    final hoverFillLight = _dayBranchCommitCardHoverFill(auraTokens);
+    final Color commitTileBackground;
+    if (isDark) {
+      commitTileBackground = stitchGlassFill;
+    } else {
+      commitTileBackground =
+          widget.showHoverActions ? hoverFillLight : cardFillLight;
+    }
+    final actionBlendBase =
+        isDark ? stitchGlassFill : commitTileBackground;
 
     return Theme(
       data: theme.copyWith(
@@ -608,13 +792,15 @@ class CommitTileState extends State<CommitTile> {
         highlightColor: Colors.transparent,
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(5),
+        borderRadius: BorderRadius.circular(_kBranchCommitListCardRadius),
         child: Stack(
           clipBehavior: Clip.hardEdge,
           children: [
-            Container(
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 140),
+              curve: Curves.easeOut,
               decoration: BoxDecoration(
-                color: isDark ? stitchGlassFill : auraTokens.surface,
+                color: commitTileBackground,
                 // 不可與非均勻邊框色並用 borderRadius（Flutter assert）；圓角由外層 ClipRRect 裁切。
                 border: Border(
                   left: BorderSide(
@@ -662,24 +848,151 @@ class CommitTileState extends State<CommitTile> {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
                                     children: [
                                       Text(
-                                        '${commit.revision}',
+                                        'r${commit.revision}',
                                         style: GoogleFonts.jetBrainsMono(
                                           fontFeatures: const [
                                             FontFeature.tabularFigures(),
                                           ],
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: hl
-                                              ? (isDark
-                                                  ? stitchPrimaryFixed
-                                                  : auraTokens.text)
-                                              : auraTokens.textMuted,
+                                          fontSize: widget.isLatest ? 14 : 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: widget.isLatest
+                                              ? auraTokens.accent
+                                              : (hl
+                                                  ? (isDark
+                                                      ? stitchPrimaryFixed
+                                                      : auraTokens.text)
+                                                  : auraTokens.textMuted),
                                           letterSpacing: 0.2,
                                         ),
                                       ),
+                                      if (widget.isLatest) ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: auraTokens.accent
+                                                .withOpacity(0.15),
+                                            borderRadius:
+                                                BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            'Latest',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w600,
+                                              color: auraTokens.accent,
+                                              letterSpacing: 0.4,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                       const Spacer(),
+                                      if (hasCommitActions)
+                                        SizedBox(
+                                          width: _kListActionSlotSize * 2,
+                                          height: _kListActionSlotSize,
+                                          child: Align(
+                                            alignment: Alignment.centerRight,
+                                            child: Opacity(
+                                              opacity:
+                                                  showCommitActions ? 1 : 0,
+                                              child: IgnorePointer(
+                                                ignoring: !showCommitActions,
+                                                child: Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    SizedBox(
+                                                      width:
+                                                          _kListActionSlotSize,
+                                                      height:
+                                                          _kListActionSlotSize,
+                                                      child: widget
+                                                                  .onCheckoutPressed !=
+                                                              null
+                                                          ? Tooltip(
+                                                              message: t(
+                                                                context,
+                                                                'Checkout 此修訂',
+                                                                'Checkout this revision',
+                                                              ),
+                                                              child: IconButton(
+                                                                style:
+                                                                    _listActionIconStyle(
+                                                                  isDark:
+                                                                      isDark,
+                                                                  blendBase:
+                                                                      actionBlendBase,
+                                                                  iconColor:
+                                                                      auraTokens
+                                                                          .accent,
+                                                                ),
+                                                                onPressed: widget
+                                                                    .onCheckoutPressed,
+                                                                icon: Icon(
+                                                                  Icons
+                                                                      .download_for_offline_outlined,
+                                                                  size:
+                                                                      _kListActionIconSize,
+                                                                ),
+                                                              ),
+                                                            )
+                                                          : const SizedBox
+                                                              .shrink(),
+                                                    ),
+                                                    SizedBox(
+                                                      width:
+                                                          _kListActionSlotSize,
+                                                      height:
+                                                          _kListActionSlotSize,
+                                                      child: widget
+                                                                  .onAiAnalyzeCommit !=
+                                                              null
+                                                          ? Tooltip(
+                                                              message: t(
+                                                                context,
+                                                                '以此修訂開啟 AI助理',
+                                                                'Open AI Assistant for this revision',
+                                                              ),
+                                                              child: IconButton(
+                                                                style:
+                                                                    _listActionIconStyle(
+                                                                  isDark:
+                                                                      isDark,
+                                                                  blendBase:
+                                                                      actionBlendBase,
+                                                                  iconColor:
+                                                                      auraTokens
+                                                                          .accent,
+                                                                ),
+                                                                onPressed: widget
+                                                                    .onAiAnalyzeCommit,
+                                                                icon: Icon(
+                                                                  Icons
+                                                                      .auto_awesome_outlined,
+                                                                  size:
+                                                                      _kListActionIconSize,
+                                                                ),
+                                                              ),
+                                                            )
+                                                          : const SizedBox
+                                                              .shrink(),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      if (hasCommitActions)
+                                        const SizedBox(width: 6),
                                       Text(
                                         shortCommitDate(commit.date),
                                         style: GoogleFonts.jetBrainsMono(
@@ -746,27 +1059,39 @@ class CommitTileState extends State<CommitTile> {
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
-                                      if (commit.ticketId.isNotEmpty)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 6,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: auraTokens.violet
-                                                .withOpacity(0.12),
-                                            borderRadius:
-                                                BorderRadius.circular(4),
-                                          ),
-                                          child: Text(
-                                            commit.ticketId,
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w600,
-                                              color: auraTokens.violet,
-                                              letterSpacing: 0.4,
-                                            ),
-                                          ),
+                                      if (ticketIds.isNotEmpty)
+                                        Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            for (var i = 0;
+                                                i < ticketIds.length;
+                                                i++) ...[
+                                              if (i > 0)
+                                                const SizedBox(width: 6),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                  horizontal: 6,
+                                                  vertical: 2,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: auraTokens.violet
+                                                      .withOpacity(0.12),
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
+                                                ),
+                                                child: Text(
+                                                  ticketIds[i],
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: auraTokens.violet,
+                                                    letterSpacing: 0.4,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ],
                                         ),
                                       const SizedBox(width: 6),
                                       Container(
@@ -820,8 +1145,8 @@ class CommitTileState extends State<CommitTile> {
                             Text(
                               t(
                                 context,
-                                '點檔名列可展開／收合，展開後即時抓取並顯示 Diff。',
-                                'Tap a file row to expand or collapse; diff is fetched when expanded.',
+                                '點路徑標題列展開 Diff（展開後即載入）；複製與重新抓取在列右側。',
+                                'Tap a path title bar to expand and load the diff. Copy and refresh are on the right.',
                               ),
                               style: theme.textTheme.bodySmall
                                   ?.copyWith(color: auraTokens.textMuted),
@@ -839,253 +1164,306 @@ class CommitTileState extends State<CommitTile> {
                                 final pathLabel = path.copyFromPath == null
                                     ? path.path
                                     : '${path.path}  <-  ${path.copyFromPath}@${path.copyFromRev ?? '-'}';
+                                final isCopy = path.copyFromPath != null;
+                                final canUseDiff = !isCopy &&
+                                    widget.repository != null &&
+                                    widget.settings != null;
 
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 8),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      Material(
-                                        color: Colors.transparent,
-                                        child: Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            vertical: 4,
-                                          ),
-                                          child: Row(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Expanded(
-                                                child: LayoutBuilder(
-                                                  builder: (context, cons) {
-                                                    const chipW = 28.0;
-                                                    const gapAfterChip = 8.0;
-                                                    const gapBeforeOpen = 6.0;
-                                                    const openBtnW = 36.0;
-                                                    final maxTextW = max(
-                                                      48.0,
-                                                      cons.maxWidth -
-                                                          chipW -
-                                                          gapAfterChip -
-                                                          gapBeforeOpen -
-                                                          openBtnW,
-                                                    );
-                                                    return Row(
-                                                      crossAxisAlignment:
-                                                          CrossAxisAlignment
-                                                              .start,
-                                                      children: [
-                                                        InkWell(
-                                                          onTap: widget.repository ==
-                                                                      null ||
-                                                                  widget.settings ==
-                                                                      null
-                                                              ? null
-                                                              : () =>
-                                                                  _togglePathDiff(
-                                                                    path,
-                                                                  ),
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(6),
-                                                          child: Row(
-                                                            mainAxisSize:
-                                                                MainAxisSize
-                                                                    .min,
-                                                            crossAxisAlignment:
-                                                                CrossAxisAlignment
-                                                                    .start,
-                                                            children: [
-                                                              Container(
-                                                                width: 28,
-                                                                alignment:
-                                                                    Alignment
-                                                                        .center,
-                                                                padding:
-                                                                    const EdgeInsets
-                                                                        .symmetric(
-                                                                  vertical: 2,
-                                                                ),
-                                                                decoration:
-                                                                    BoxDecoration(
-                                                                  color: actionColor(
-                                                                    path.action,
-                                                                  ).withOpacity(
-                                                                    0.12,
-                                                                  ),
-                                                                  borderRadius:
-                                                                      BorderRadius
-                                                                          .circular(
-                                                                    8,
-                                                                  ),
-                                                                ),
-                                                                child: Text(
-                                                                  path.action,
-                                                                  style:
-                                                                      TextStyle(
-                                                                    color:
-                                                                        actionColor(
-                                                                      path.action,
-                                                                    ),
-                                                                    fontWeight:
-                                                                        FontWeight
-                                                                            .w600,
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                              const SizedBox(
-                                                                width: 8,
-                                                              ),
-                                                              SizedBox(
-                                                                width: maxTextW,
-                                                                child: Text(
-                                                                  pathLabel,
-                                                                  maxLines: 2,
-                                                                  overflow:
-                                                                      TextOverflow
-                                                                          .ellipsis,
-                                                                  style:
-                                                                      TextStyle(
-                                                                    color: theme
-                                                                        .colorScheme
-                                                                        .primary,
-                                                                    fontWeight:
-                                                                        FontWeight
-                                                                            .w700,
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                        const SizedBox(
-                                                          width: 6,
-                                                        ),
-                                                        IconButton(
-                                                          tooltip: t(
-                                                            context,
-                                                            '獨立視窗',
-                                                            'Separate window',
-                                                          ),
-                                                          visualDensity:
-                                                              VisualDensity
-                                                                  .compact,
-                                                          padding: EdgeInsets.zero,
-                                                          constraints:
-                                                              const BoxConstraints(
-                                                            minWidth: 36,
-                                                            minHeight: 36,
-                                                          ),
-                                                          icon: Icon(
-                                                            Icons
-                                                                .open_in_new_rounded,
-                                                            size: 20,
-                                                            color: widget.repository ==
-                                                                        null ||
-                                                                    widget.settings ==
-                                                                        null
-                                                                ? auraTokens
-                                                                    .textMuted
-                                                                    .withOpacity(
-                                                                      0.35,
-                                                                    )
-                                                                : auraTokens
-                                                                    .textMuted,
-                                                          ),
-                                                          onPressed: widget
-                                                                          .repository ==
-                                                                      null ||
-                                                                  widget.settings ==
-                                                                      null
-                                                              ? null
-                                                              : () =>
-                                                                  _openStandaloneDiffWindow(
-                                                                    path,
-                                                                  ),
-                                                        ),
-                                                      ],
-                                                    );
-                                                  },
-                                                ),
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(
+                                        _kBranchCommitListCardRadius,
+                                      ),
+                                      border: Border.all(
+                                        color: isDark
+                                            ? stitchGlassBorder.withOpacity(0.55)
+                                            : auraTokens.border.withOpacity(0.55),
+                                      ),
+                                      color: isDark
+                                          ? stitchGlassFill.withOpacity(0.42)
+                                          : auraTokens.surface,
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            onTap: (canUseDiff || isCopy)
+                                                ? () => _togglePathDiff(path)
+                                                : null,
+                                            child: Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 8,
                                               ),
-                                              IconButton(
-                                                tooltip: t(
-                                                  context,
-                                                  '展開或收合 Diff',
-                                                  'Expand or collapse diff',
-                                                ),
-                                                visualDensity:
-                                                    VisualDensity.compact,
-                                                padding: EdgeInsets.zero,
-                                                constraints:
-                                                    const BoxConstraints(
-                                                  minWidth: 36,
-                                                  minHeight: 36,
-                                                ),
-                                                icon: Icon(
-                                                  expandedPath
-                                                      ? Icons
-                                                          .expand_less_rounded
-                                                      : Icons
-                                                          .expand_more_rounded,
-                                                  size: 22,
-                                                  color: auraTokens.textMuted,
-                                                ),
-                                                onPressed: widget.repository ==
-                                                            null ||
-                                                        widget.settings == null
-                                                    ? null
-                                                    : () =>
-                                                        _togglePathDiff(path),
+                                              child: Row(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.center,
+                                                children: [
+                                                  Container(
+                                                    width: 28,
+                                                    alignment: Alignment.center,
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                      vertical: 2,
+                                                    ),
+                                                    decoration: BoxDecoration(
+                                                      color: actionColor(
+                                                        path.action,
+                                                      ).withOpacity(0.12),
+                                                      borderRadius:
+                                                          BorderRadius.circular(8),
+                                                    ),
+                                                    child: Text(
+                                                      path.action,
+                                                      style: TextStyle(
+                                                        color: actionColor(
+                                                          path.action,
+                                                        ),
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: LayoutBuilder(
+                                                      builder:
+                                                          (context, constraints) {
+                                                        final textMaxWidth =
+                                                            (constraints.maxWidth -
+                                                                    _kPathTitleOpenWindowReserve)
+                                                                .clamp(
+                                                                  0.0,
+                                                                  double.infinity,
+                                                                );
+                                                        return Row(
+                                                          crossAxisAlignment:
+                                                              CrossAxisAlignment
+                                                                  .center,
+                                                          children: [
+                                                            ConstrainedBox(
+                                                              constraints:
+                                                                  BoxConstraints(
+                                                                maxWidth:
+                                                                    textMaxWidth,
+                                                              ),
+                                                              child: Text(
+                                                                pathLabel,
+                                                                maxLines: 2,
+                                                                overflow:
+                                                                    TextOverflow
+                                                                        .ellipsis,
+                                                                style:
+                                                                    TextStyle(
+                                                                  color: theme
+                                                                      .colorScheme
+                                                                      .primary,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w700,
+                                                                  fontSize: 12,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                            if (!isCopy)
+                                                            IconButton(
+                                                              tooltip: t(
+                                                                context,
+                                                                '獨立視窗',
+                                                                'Separate window',
+                                                              ),
+                                                              visualDensity:
+                                                                  VisualDensity
+                                                                      .compact,
+                                                              padding:
+                                                                  EdgeInsets.zero,
+                                                              constraints:
+                                                                  const BoxConstraints(
+                                                                minWidth: 28,
+                                                                minHeight: 28,
+                                                              ),
+                                                              icon: Icon(
+                                                                Icons
+                                                                    .open_in_new_rounded,
+                                                                size: 14,
+                                                                color: canUseDiff
+                                                                    ? auraTokens
+                                                                        .textMuted
+                                                                        .withOpacity(
+                                                                          0.55,
+                                                                        )
+                                                                    : auraTokens
+                                                                        .textMuted
+                                                                        .withOpacity(
+                                                                          0.28,
+                                                                        ),
+                                                              ),
+                                                              onPressed:
+                                                                  canUseDiff
+                                                                      ? () =>
+                                                                          _openStandaloneDiffWindow(
+                                                                            path,
+                                                                          )
+                                                                      : null,
+                                                            ),
+                                                          ],
+                                                        );
+                                                      },
+                                                    ),
+                                                  ),
+                                                  if (!isCopy &&
+                                                      expandedPath &&
+                                                      cached != null &&
+                                                      canUseDiff)
+                                                    IconButton(
+                                                      tooltip: t(
+                                                        context,
+                                                        '複製 Diff',
+                                                        'Copy Diff',
+                                                      ),
+                                                      visualDensity:
+                                                          VisualDensity.compact,
+                                                      padding: EdgeInsets.zero,
+                                                      constraints:
+                                                          const BoxConstraints(
+                                                        minWidth: 32,
+                                                        minHeight: 32,
+                                                      ),
+                                                      icon: Icon(
+                                                        Icons.copy_rounded,
+                                                        size: 18,
+                                                        color: auraTokens.textMuted,
+                                                      ),
+                                                      onPressed: () {
+                                                        Clipboard.setData(
+                                                          ClipboardData(
+                                                            text: cached.diff,
+                                                          ),
+                                                        );
+                                                        ScaffoldMessenger.of(
+                                                                context)
+                                                            .showSnackBar(
+                                                          SnackBar(
+                                                            content: Text(
+                                                              t(
+                                                                context,
+                                                                '已複製 Diff',
+                                                                'Diff copied',
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        );
+                                                      },
+                                                    ),
+                                                  if (!isCopy && expandedPath && canUseDiff)
+                                                    IconButton(
+                                                      tooltip: t(
+                                                        context,
+                                                        '重新抓取',
+                                                        'Refresh',
+                                                      ),
+                                                      visualDensity:
+                                                          VisualDensity.compact,
+                                                      padding: EdgeInsets.zero,
+                                                      constraints:
+                                                          const BoxConstraints(
+                                                        minWidth: 32,
+                                                        minHeight: 32,
+                                                      ),
+                                                      icon: Icon(
+                                                        Icons.refresh_rounded,
+                                                        size: 18,
+                                                        color: loadingPath
+                                                            ? auraTokens.textMuted
+                                                                .withOpacity(0.35)
+                                                            : auraTokens.textMuted,
+                                                      ),
+                                                      onPressed: loadingPath
+                                                          ? null
+                                                          : () =>
+                                                              _fetchDiffForPath(
+                                                                path,
+                                                                refresh: true,
+                                                              ),
+                                                    ),
+                                                  Icon(
+                                                    expandedPath
+                                                        ? Icons.expand_less_rounded
+                                                        : Icons.expand_more_rounded,
+                                                    size: 20,
+                                                    color: auraTokens.textMuted,
+                                                  ),
+                                                ],
                                               ),
-                                            ],
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      if (expandedPath)
-                                        Padding(
-                                          padding:
-                                              const EdgeInsets.only(top: 8),
-                                          child: InlineUnifiedDiffPanel(
+                                      if (expandedPath) ...[
+                                        Divider(
+                                          height: 1,
+                                          thickness: 1,
+                                          color: isDark
+                                              ? stitchGlassBorder
+                                                  .withOpacity(0.4)
+                                              : auraTokens.border
+                                                  .withOpacity(0.45),
+                                        ),
+                                        if (isCopy)
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 14, vertical: 12),
+                                            child: Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Icon(
+                                                  Icons.content_copy_rounded,
+                                                  size: 15,
+                                                  color: auraTokens.textSubtle,
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    t(
+                                                      context,
+                                                      '此為 SVN 複製操作（分支建立），diff 內容可能包含整棵目錄樹，略過以避免逾時。\n'
+                                                      '來源：${path.copyFromPath} @ r${path.copyFromRev ?? '-'}',
+                                                      'This is an SVN copy operation (branch creation). Diff may contain the entire directory tree and is skipped to avoid timeout.\n'
+                                                      'Copied from: ${path.copyFromPath} @ r${path.copyFromRev ?? '-'}',
+                                                    ),
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      height: 1.6,
+                                                      color: auraTokens.textMuted,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          )
+                                        else
+                                          InlineUnifiedDiffPanel(
+                                            showTitleBar: false,
+                                            embeddedLoadingFixedHeight:
+                                                _kEmbeddedDiffLoadingBodyHeight,
                                             diffText: cached?.diff ?? '',
                                             isLoading: loadingPath,
                                             errorText: error,
-                                            headerPath: path.path,
-                                            onCopy: cached == null
-                                                ? null
-                                                : () {
-                                                    Clipboard.setData(
-                                                      ClipboardData(
-                                                        text: cached.diff,
-                                                      ),
-                                                    );
-                                                    ScaffoldMessenger.of(
-                                                            context)
-                                                        .showSnackBar(
-                                                      SnackBar(
-                                                        content: Text(
-                                                          t(
-                                                            context,
-                                                            '已複製 Diff',
-                                                            'Diff copied',
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    );
-                                                  },
-                                            onRefresh: widget.repository ==
-                                                        null ||
-                                                    widget.settings == null
-                                                ? null
-                                                : () => _fetchDiffForPath(
-                                                      path,
-                                                      refresh: true,
-                                                    ),
+                                            onCopy: null,
+                                            onRefresh: null,
+                                            onOpenWindow: null,
                                           ),
-                                        ),
+                                      ],
                                     ],
                                   ),
+                                ),
                                 );
                               },
                             ),

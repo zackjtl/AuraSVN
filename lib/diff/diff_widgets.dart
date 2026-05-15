@@ -590,7 +590,12 @@ class InlineUnifiedDiffPanel extends StatefulWidget {
     this.headerPath,
     this.onCopy,
     this.onRefresh,
+    this.onOpenWindow,
     this.fillAvailableHeight = false,
+    /// 為 false 時不顯示頂部檔名工具列（由外層標題列擔任），僅顯示 diff 內容區。
+    this.showTitleBar = true,
+    /// 內嵌且 [showTitleBar] 為 false 時，載入中先佔用的固定高度（像素）；null 則沿用內建 padding。
+    this.embeddedLoadingFixedHeight,
   });
 
   final String diffText;
@@ -599,8 +604,11 @@ class InlineUnifiedDiffPanel extends StatefulWidget {
   final String? headerPath;
   final VoidCallback? onCopy;
   final VoidCallback? onRefresh;
+  final VoidCallback? onOpenWindow;
   /// 為 true 時父層須給固定高度，diff 捲動區以 [Expanded] 佔滿剩餘（父層多為依視窗比例的 [SizedBox]）。
   final bool fillAvailableHeight;
+  final bool showTitleBar;
+  final double? embeddedLoadingFixedHeight;
 
   @override
   State<InlineUnifiedDiffPanel> createState() => _InlineUnifiedDiffPanelState();
@@ -693,19 +701,43 @@ class _InlineUnifiedDiffPanelState extends State<InlineUnifiedDiffPanel> {
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                widget.headerPath ?? '',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.jetBrainsMono(
-                  textStyle: theme.textTheme.bodySmall,
-                  fontWeight: FontWeight.w600,
-                  fontFeatures: const [
-                    FontFeature.tabularFigures(),
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      widget.headerPath ?? '',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.jetBrainsMono(
+                        textStyle: theme.textTheme.bodySmall,
+                        fontWeight: FontWeight.w600,
+                        fontFeatures: const [
+                          FontFeature.tabularFigures(),
+                        ],
+                        decoration: TextDecoration.none,
+                        decorationThickness: 0,
+                      ),
+                    ),
+                  ),
+                  if (widget.onOpenWindow != null) ...[
+                    const SizedBox(width: 2),
+                    IconButton(
+                      tooltip: t(context, '獨立視窗', 'Separate window'),
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 24,
+                        minHeight: 24,
+                      ),
+                      icon: Icon(
+                        Icons.open_in_new_rounded,
+                        size: 12,
+                        color: aura(context).textMuted.withOpacity(0.55),
+                      ),
+                      onPressed: widget.onOpenWindow,
+                    ),
                   ],
-                  decoration: TextDecoration.none,
-                  decorationThickness: 0,
-                ),
+                ],
               ),
             ),
             if (widget.onCopy != null)
@@ -738,28 +770,50 @@ class _InlineUnifiedDiffPanelState extends State<InlineUnifiedDiffPanel> {
 
     late final List<Widget> bodyChildren;
     if (widget.isLoading) {
-      bodyChildren = [
-        fill
-            ? const Expanded(
-                child: Center(
-                  child: SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              )
-            : const Padding(
-                padding: EdgeInsets.symmetric(vertical: 36),
-                child: Center(
-                  child: SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
+      final fixedH = widget.embeddedLoadingFixedHeight;
+      if (!fill &&
+          fixedH != null &&
+          fixedH > 0 &&
+          !widget.showTitleBar) {
+        bodyChildren = [
+          SizedBox(
+            height: fixedH,
+            width: double.infinity,
+            child: const Center(
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(strokeWidth: 2),
               ),
-      ];
+            ),
+          ),
+        ];
+      } else if (fill) {
+        bodyChildren = [
+          const Expanded(
+            child: Center(
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          ),
+        ];
+      } else {
+        bodyChildren = [
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 36),
+            child: Center(
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          ),
+        ];
+      }
     } else if (widget.errorText != null) {
       final errorChild = Padding(
         padding: const EdgeInsets.all(12),
@@ -804,6 +858,16 @@ class _InlineUnifiedDiffPanelState extends State<InlineUnifiedDiffPanel> {
                 child: scroll,
               ),
       ];
+    }
+
+    if (!widget.showTitleBar) {
+      return ClipRRect(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: fill ? MainAxisSize.max : MainAxisSize.min,
+          children: bodyChildren,
+        ),
+      );
     }
 
     return Container(

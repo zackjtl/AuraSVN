@@ -24,6 +24,7 @@ class AppSettings {
     required this.appearanceThemeCode,
     required this.repositories,
     this.branchMapOrientation = kBranchMapOrientationTopBottom,
+    this.selectedRepositoryName = '',
   });
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -46,6 +47,8 @@ class AppSettings {
       repositories: _repositoryProfilesFromJson(json['repository_profiles']),
       branchMapOrientation:
           _normalizeBranchMapOrientation(json['branch_map_orientation']),
+      selectedRepositoryName:
+          json['selected_repository']?.toString() ?? '',
     );
   }
 
@@ -79,6 +82,7 @@ class AppSettings {
 
   /// 與 graphview `BuchheimWalkerConfiguration` 一致：`1` = 由上到下，`3` = 由左到右。
   final int branchMapOrientation;
+  final String selectedRepositoryName;
 
   AppSettings copyWith({
     String? notesRootPath,
@@ -93,6 +97,7 @@ class AppSettings {
     String? appearanceThemeCode,
     List<SvnRepository>? repositories,
     int? branchMapOrientation,
+    String? selectedRepositoryName,
   }) {
     return AppSettings(
       notesRootPath: notesRootPath ?? this.notesRootPath,
@@ -110,6 +115,8 @@ class AppSettings {
       repositories: repositories ?? this.repositories,
       branchMapOrientation:
           branchMapOrientation ?? this.branchMapOrientation,
+      selectedRepositoryName:
+          selectedRepositoryName ?? this.selectedRepositoryName,
     );
   }
 
@@ -127,6 +134,7 @@ class AppSettings {
         'repository_profiles':
             repositories.map((repository) => repository.toJson()).toList(),
         'branch_map_orientation': branchMapOrientation,
+        'selected_repository': selectedRepositoryName,
       };
 }
 

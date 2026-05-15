@@ -13,6 +13,8 @@ import 'package:aura_svn/project_report_view.dart';
 import 'package:aura_svn/settings_view.dart';
 import 'package:aura_svn/utils/command_line.dart';
 import 'package:aura_svn/utils/path_utils.dart';
+import 'package:aura_svn/utils/branch_paths.dart';
+import 'package:aura_svn/widgets/checkout_dialog.dart';
 import 'package:aura_svn/widgets/commit_widgets.dart';
 import 'package:aura_svn/widgets/dashboard_widgets.dart';
 import 'package:aura_svn/widgets/data_panel_widgets.dart';
@@ -60,9 +62,10 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _showVisualMap = false;
   bool _showSettings = false;
   bool _showRepositoryProfiles = false;
-  bool _showAiAnalysis = false;
-  bool _showAiHistory = false;
   bool _showAiChat = false;
+  /// 與 [_showAiChat] 並用：null 表示僅針對整個目前倉庫。
+  String? _aiChatFocusBranchPath;
+  int? _aiChatFocusCommitRevision;
   bool _controlPanelCollapsed = false;
   bool _outputConsoleExpanded = false;
   String? _branchCommitsPath;
@@ -104,8 +107,6 @@ class _DashboardPageState extends State<DashboardPage> {
   final _svnCommandController = TextEditingController();
   final _svnParametersController = TextEditingController();
   final _pythonController = TextEditingController();
-  final _aiReportTitleController = TextEditingController();
-  final _aiPromptController = TextEditingController();
 
   @override
   void initState() {
@@ -125,8 +126,7 @@ class _DashboardPageState extends State<DashboardPage> {
     _svnCommandController.dispose();
     _svnParametersController.dispose();
     _pythonController.dispose();
-    _aiReportTitleController.dispose();
-    _aiPromptController.dispose();
+
     super.dispose();
   }
 
@@ -135,7 +135,13 @@ class _DashboardPageState extends State<DashboardPage> {
       final root = await findProjectRoot();
       final settings = await loadAppSettings(root);
       final repositories = settings.repositories;
-      final selectedRepository = repositories.first;
+      final savedName = settings.selectedRepositoryName;
+      final selectedRepository = savedName.isNotEmpty
+          ? repositories.firstWhere(
+              (r) => r.name == savedName,
+              orElse: () => repositories.first,
+            )
+          : repositories.first;
       final data = await readOutput(root, selectedRepository);
       if (!mounted) {
         return;
@@ -243,7 +249,7 @@ class _DashboardPageState extends State<DashboardPage> {
           final keyLoaded =
               decoded is Map && decoded['ollama_api_key_loaded'] == true;
           _backendStatus =
-              '後端已連線 (${response.statusCode})，Ollama API key（後端設定檔 app_settings.json）：${keyLoaded ? '已載入' : '未載入'}';
+              '後端已連線 (${response.statusCode})，LLM API key（後端設定檔 app_settings.json）：${keyLoaded ? '已載入' : '未載入'}';
         } else {
           _backendStatus = '後端回應異常：HTTP ${response.statusCode}';
         }
@@ -289,8 +295,8 @@ class _DashboardPageState extends State<DashboardPage> {
           content: Text(
             t(
               context,
-              '請填寫 Ollama Base URL 與 Model。',
-              'Please enter Ollama Base URL and Model.',
+              '請填寫 LLM Base URL 與 Model。',
+              'Please enter LLM Base URL and Model.',
             ),
           ),
         ),
@@ -340,11 +346,11 @@ class _DashboardPageState extends State<DashboardPage> {
             : preview;
         final usedUrl = (decoded['ollama_chat_url'] ?? '').toString();
         var msg = truncated.isEmpty
-            ? t(context, 'Ollama 測試成功。', 'Ollama test succeeded.')
+            ? t(context, 'LLM 測試成功。', 'LLM test succeeded.')
             : t(
                 context,
-                'Ollama 測試成功：$truncated',
-                'Ollama test succeeded: $truncated',
+                'LLM 測試成功：$truncated',
+                'LLM test succeeded: $truncated',
               );
         if (usedUrl.isNotEmpty) {
           msg = '$msg\n→ $usedUrl';
@@ -360,7 +366,7 @@ class _DashboardPageState extends State<DashboardPage> {
         messenger.showSnackBar(
           SnackBar(
             content: Text(
-              t(context, 'Ollama 測試失敗：$err', 'Ollama test failed: $err'),
+              t(context, 'LLM 測試失敗：$err', 'LLM test failed: $err'),
             ),
             backgroundColor: Colors.red.shade800,
             duration: const Duration(seconds: 12),
@@ -376,8 +382,8 @@ class _DashboardPageState extends State<DashboardPage> {
           content: Text(
             t(
               context,
-              'Ollama 測試失敗：${_formatBackendConnectionError(error)}',
-              'Ollama test failed: ${_formatBackendConnectionError(error)}',
+              'LLM 測試失敗：${_formatBackendConnectionError(error)}',
+              'LLM test failed: ${_formatBackendConnectionError(error)}',
             ),
           ),
           backgroundColor: Colors.red.shade800,
@@ -669,6 +675,19 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  Future<void> _persistSelectedRepository(String repositoryName) async {
+    final root = _projectRoot;
+    if (root == null) return;
+    final updated = _settings.copyWith(selectedRepositoryName: repositoryName);
+    try {
+      await saveAppSettings(root, updated);
+      if (!mounted) return;
+      setState(() {
+        _settings = updated;
+      });
+    } catch (_) {}
+  }
+
   Future<void> _selectRepository(SvnRepository repository) async {
     if (_isRefreshing) {
       return;
@@ -682,6 +701,7 @@ class _DashboardPageState extends State<DashboardPage> {
       _lastUpdateStatus = '正在讀取本地輸出資料';
     });
     await _reloadData();
+    unawaited(_persistSelectedRepository(repository.name));
     unawaited(_checkRepositoryUpdateInBackground(repository));
   }
 
@@ -1029,72 +1049,23 @@ class _DashboardPageState extends State<DashboardPage> {
         : LayoutBuilder(
             builder: (context, constraints) {
               if (_showSettings) {
-                return Column(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: _buildSettingsPage(),
-                      ),
-                    ),
-                    consoleWidget(),
-                  ],
+                return Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: _buildSettingsPage(),
                 );
               }
 
               if (_showRepositoryProfiles) {
-                return Column(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: _buildRepositoryProfilesPage(),
-                      ),
-                    ),
-                    consoleWidget(),
-                  ],
-                );
-              }
-
-              if (_showAiAnalysis) {
-                return Column(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: _buildAiAnalysisPage(),
-                      ),
-                    ),
-                    consoleWidget(),
-                  ],
-                );
-              }
-
-              if (_showAiHistory) {
-                return Column(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: _buildAiHistoryPage(),
-                      ),
-                    ),
-                    consoleWidget(),
-                  ],
+                return Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: _buildRepositoryProfilesPage(),
                 );
               }
 
               if (_showAiChat) {
-                return Column(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: _buildAiChatPage(),
-                      ),
-                    ),
-                    consoleWidget(),
-                  ],
+                return Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: _buildAiChatPage(),
                 );
               }
 
@@ -1113,16 +1084,9 @@ class _DashboardPageState extends State<DashboardPage> {
               }
 
               if (_showVisualMap) {
-                return Column(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: _buildVisualMapPage(),
-                      ),
-                    ),
-                    consoleWidget(),
-                  ],
+                return Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: _buildVisualMapPage(),
                 );
               }
 
@@ -1226,6 +1190,8 @@ class _DashboardPageState extends State<DashboardPage> {
             data: _data,
             settings: _settings,
             onBranchSelected: _openBranchDetail,
+            onAiChatForBranch: _openAiChatForBranch,
+            onCheckoutBranch: (path) => _openCheckoutDialog(branchPath: path),
             onBranchMapOrientationChanged: (orientation) {
               unawaited(_persistBranchMapOrientation(orientation));
             },
@@ -1235,6 +1201,7 @@ class _DashboardPageState extends State<DashboardPage> {
       ],
     );
   }
+
 
   Widget _buildSettingsPage() {
     return Column(
@@ -1249,8 +1216,8 @@ class _DashboardPageState extends State<DashboardPage> {
           title: t(context, '設定', 'Settings'),
           subtitle: t(
             context,
-            '後端、Ollama、SVN 與筆記路徑',
-            'Backend, Ollama, SVN, and notes paths',
+            '後端、LLM、SVN 與筆記路徑',
+            'Backend, LLM, SVN, and notes paths',
           ),
           trailing: FilledButton.icon(
             onPressed: _saveSettings,
@@ -1328,15 +1295,21 @@ class _DashboardPageState extends State<DashboardPage> {
         Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(2, 2, 2, 28),
-            child: SettingsSectionCard(
-              icon: Icons.storage_rounded,
-              title: 'Repository Profiles',
-              description: t(
-                context,
-                '可新增或刪除 SVN 庫。Title 與 SVN Base URL 必填；Sub Title 可留空。儲存後會套用設定並返回主頁。',
-                'Add or remove SVN repositories. Title and SVN Base URL are required; Sub Title is optional. Saving applies settings and returns to the home page.',
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Text(
+                  t(
+                    context,
+                    '可新增或刪除 SVN 庫。Title 與 SVN Base URL 必填；Sub Title 可留空。儲存後會套用設定並返回主頁。',
+                    'Add or remove SVN repositories. Title and SVN Base URL are required; Sub Title is optional. Saving applies settings and returns to the home page.',
+                  ),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: aura(context).textMuted,
+                        height: 1.45,
+                      ),
+                ),
+                const SizedBox(height: 18),
                 RepositoryProfilesEditor(
                   repositories: _repositoryProfiles,
                   onChanged: (profiles) {
@@ -1353,42 +1326,62 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildAiAnalysisPage() {
-    return ProjectReportAnalysisPage(
-      repository: _selectedRepository,
-      settings: _settings,
-      titleController: _aiReportTitleController,
-      promptController: _aiPromptController,
-      onBack: () {
-        setState(() {
-          _showAiAnalysis = false;
-        });
-      },
-    );
-  }
-
-  Widget _buildAiHistoryPage() {
-    return ProjectReportHistoryPage(
-      repository: _selectedRepository,
-      settings: _settings,
-      onBack: () {
-        setState(() {
-          _showAiHistory = false;
-        });
-      },
-    );
-  }
-
   Widget _buildAiChatPage() {
     return ProjectChatPage(
       repository: _selectedRepository,
       settings: _settings,
-      onBack: () {
-        setState(() {
-          _showAiChat = false;
-        });
-      },
+      focusBranchPath: _aiChatFocusBranchPath,
+      focusCommitRevision: _aiChatFocusCommitRevision,
+      onBack: _closeAiChat,
     );
+  }
+
+  void _openCheckoutDialog({String? branchPath, int? revision}) {
+    final repo = _selectedRepository;
+    final url = branchPath == null || branchPath.trim().isEmpty
+        ? repo.url.trim()
+        : svnCheckoutUrlForBranch(repo.url.trim(), branchPath);
+    showCheckoutDialog(
+      context,
+      initialRepoUrl: url,
+      initialRevision: revision != null ? '$revision' : '',
+      svnCommand: _svnCommandController.text.trim(),
+      svnCommandParameters: _svnParametersController.text.trim(),
+      username: _usernameController.text.trim(),
+      password: _passwordController.text,
+    );
+  }
+
+  void _openAiChatForRepository() {
+    setState(() {
+      _aiChatFocusBranchPath = null;
+      _aiChatFocusCommitRevision = null;
+      _showAiChat = true;
+    });
+  }
+
+  void _openAiChatForBranch(String branchPath) {
+    setState(() {
+      _aiChatFocusBranchPath = branchPath;
+      _aiChatFocusCommitRevision = null;
+      _showAiChat = true;
+    });
+  }
+
+  void _openAiChatForCommit(String branchPath, int revision) {
+    setState(() {
+      _aiChatFocusBranchPath = branchPath;
+      _aiChatFocusCommitRevision = revision;
+      _showAiChat = true;
+    });
+  }
+
+  void _closeAiChat() {
+    setState(() {
+      _showAiChat = false;
+      _aiChatFocusBranchPath = null;
+      _aiChatFocusCommitRevision = null;
+    });
   }
 
   void _openBranchDetail(String branchPath) {
@@ -1499,9 +1492,11 @@ class _DashboardPageState extends State<DashboardPage> {
                           )
                         : ListView.builder(
                             padding: EdgeInsets.fromLTRB(
-                              dark ? 12 : 8,
+                              dark
+                                  ? kBranchCommitListPadLeftNight
+                                  : kBranchCommitListPadLeftDay,
                               dark ? 16 : 4,
-                              12,
+                              kBranchCommitListPadRight,
                               dark ? 28 : 4,
                             ),
                             itemCount: commits.length,
@@ -1512,6 +1507,7 @@ class _DashboardPageState extends State<DashboardPage> {
                                 commit: commit,
                                 repository: _selectedRepository,
                                 settings: _settings,
+                                isLatest: index == 0,
                                 expanded:
                                     _commitListExpandedRevision == rev,
                                 onExpandToggle: () {
@@ -1522,72 +1518,88 @@ class _DashboardPageState extends State<DashboardPage> {
                                             : rev;
                                   });
                                 },
+                                onAiAnalyzeCommit: () =>
+                                    _openAiChatForCommit(branchPath, rev),
+                                onCheckoutPressed: () => _openCheckoutDialog(
+                                  branchPath: branchPath,
+                                  revision: rev,
+                                ),
                               );
                             },
                           );
-                    if (!dark) {
-                      return Card(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-                          child: list,
-                        ),
-                      );
-                    }
-                    return DecoratedBox(
+                    return Container(
                       decoration: BoxDecoration(
-                        color: stitchSurfaceDim,
-                        border: Border(
-                          right: BorderSide(
-                            color: auraTokens.border.withOpacity(0.22),
-                          ),
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(
+                          color: auraTokens.accent.withOpacity(0.48),
+                          width: 1,
                         ),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
-                            child: Row(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(5),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final titlePadLeft =
+                                commitHistoryTitlePaddingLeft(
+                              constraints.maxWidth,
+                              isDark: dark,
+                            );
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Expanded(
-                                  child: Text(
-                                    t(context, 'Commit 歷史', 'Commit History'),
-                                    style: GoogleFonts.inter(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                      color: auraTokens.text,
-                                    ),
+                                Padding(
+                                  padding: EdgeInsets.fromLTRB(
+                                    titlePadLeft,
+                                    12,
+                                    12,
+                                    8,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          t(context, 'Commit 歷史',
+                                              'Commit History'),
+                                          style: GoogleFonts.inter(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                            color: auraTokens.text,
+                                          ),
+                                        ),
+                                      ),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.filter_list_rounded,
+                                            size: 16,
+                                            color: auraTokens.textSubtle,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'FILTER',
+                                            style: GoogleFonts.jetBrainsMono(
+                                              fontSize: 11,
+                                              letterSpacing: 0.6,
+                                              fontWeight: FontWeight.w500,
+                                              color: auraTokens.textSubtle,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      Icons.filter_list_rounded,
-                                      size: 16,
-                                      color: auraTokens.textSubtle,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      'FILTER',
-                                      style: GoogleFonts.jetBrainsMono(
-                                        fontSize: 11,
-                                        letterSpacing: 0.6,
-                                        fontWeight: FontWeight.w500,
-                                        color: auraTokens.textSubtle,
-                                      ),
-                                    ),
-                                  ],
+                                Container(
+                                  height: 1,
+                                  color: auraTokens.border.withOpacity(0.1),
                                 ),
+                                Expanded(child: list),
                               ],
-                            ),
-                          ),
-                          Container(
-                            height: 1,
-                            color: auraTokens.border.withOpacity(0.1),
-                          ),
-                          Expanded(child: list),
-                        ],
+                            );
+                          },
+                        ),
                       ),
                     );
                   },
@@ -1642,21 +1654,10 @@ class _DashboardPageState extends State<DashboardPage> {
           _showVisualMap = value;
         });
       },
-      onAiAnalysisPressed: () {
-        setState(() {
-          _showAiAnalysis = true;
-        });
-      },
-      onAiHistoryPressed: () {
-        setState(() {
-          _showAiHistory = true;
-        });
-      },
-      onAiChatPressed: () {
-        setState(() {
-          _showAiChat = true;
-        });
-      },
+      onAiChatPressed: _openAiChatForRepository,
+      onCheckoutPressed: _openCheckoutDialog,
+      onCheckoutBranch: (path) => _openCheckoutDialog(branchPath: path),
+      onAiChatForBranch: _openAiChatForBranch,
       onBranchSelected: _openBranchDetail,
       onBranchMapOrientationChanged: (orientation) {
         unawaited(_persistBranchMapOrientation(orientation));

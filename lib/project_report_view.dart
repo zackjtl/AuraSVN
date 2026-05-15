@@ -1,16 +1,16 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:aura_svn/app_theme.dart';
+import 'package:aura_svn/chat_history_store.dart';
 import 'package:aura_svn/language_scope.dart';
-import 'package:aura_svn/models/project_report_log_entry.dart';
+import 'package:aura_svn/models/chat_session.dart';
 import 'package:aura_svn/models/svn_repository.dart';
 import 'package:aura_svn/notes_store.dart';
+import 'package:aura_svn/widgets/chat_history_panel.dart';
 import 'package:aura_svn/widgets/markdown_styles.dart';
-import 'package:aura_svn/widgets/misc_widgets.dart';
 import 'package:aura_svn/widgets/page_header_widgets.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 const double _kAiReportRadius = 5;
@@ -29,121 +29,191 @@ ShapeBorder _aiReportCardShape(BuildContext context) {
   );
 }
 
-class ProjectReportButton extends StatefulWidget {
-  const ProjectReportButton({
-    super.key,
-    required this.repository,
-    required this.settings,
+/// 依 [PersistedChatScope] 顯示目標範圍；未帶入之欄位不顯示。若三欄皆無則整塊不顯示。
+class _AiChatScopeStrip extends StatelessWidget {
+  const _AiChatScopeStrip({
+    required this.repositoryName,
+    required this.scope,
   });
 
-  final SvnRepository repository;
-  final AppSettings settings;
+  final String repositoryName;
+  final PersistedChatScope scope;
 
   @override
-  State<ProjectReportButton> createState() => _ProjectReportButtonState();
-}
+  Widget build(BuildContext context) {
+    final a = aura(context);
+    final theme = Theme.of(context);
 
-class _ProjectReportButtonState extends State<ProjectReportButton> {
-  bool _isRunning = false;
+    final showPath = scope.svnPresent &&
+        (scope.svnUrl != null && scope.svnUrl!.trim().isNotEmpty);
+    final pathUrl = showPath ? scope.svnUrl!.trim() : '';
 
-  Future<void> _generate() async {
-    setState(() {
-      _isRunning = true;
-    });
+    final showBranch = scope.branchPresent;
+    final branchRaw = scope.branchPath ?? '';
+    final branchValue = !showBranch
+        ? ''
+        : (branchRaw.trim().isEmpty
+            ? t(context, '（整個倉庫）', '(Whole repository)')
+            : branchRaw.replaceAll('\n', ' '));
 
-    try {
-      final languageCode = LanguageScope.of(context);
-      await showModalBottomSheet<void>(
-        context: context,
-        showDragHandle: true,
-        isScrollControlled: true,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.86,
-        ),
-        builder: (context) => LanguageScope(
-          languageCode: languageCode,
-          child: _ProjectReportConsoleSheet(
-            repository: widget.repository,
-            settings: widget.settings,
+    final showCommit = scope.commitPresent;
+    final commitValue = !showCommit
+        ? ''
+        : (scope.commitRevision != null
+            ? 'r${scope.commitRevision}'
+            : t(context, '（未指定單筆修訂）', '(No single revision)'));
+
+    if (!showPath && !showBranch && !showCommit) {
+      return const SizedBox.shrink();
+    }
+
+    final lineStyle = theme.textTheme.bodySmall?.copyWith(
+      color: a.textMuted,
+      height: 1.25,
+      fontSize: 12,
+    );
+    final labelStyle =
+        lineStyle?.copyWith(fontWeight: FontWeight.w700, color: a.textMuted);
+    final valueStyle = lineStyle?.copyWith(
+      fontWeight: FontWeight.w400,
+      color: a.textSubtle,
+    );
+
+    final rowChildren = <Widget>[];
+    void addCell(Widget cell) {
+      if (rowChildren.isNotEmpty) {
+        rowChildren.add(const SizedBox(width: 10));
+      }
+      rowChildren.add(Expanded(child: cell));
+    }
+
+    if (showPath) {
+      addCell(
+        _TargetScopeCell(
+          child: Tooltip(
+            message: repositoryName,
+            waitDuration: const Duration(milliseconds: 450),
+            child: SelectionArea(
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(text: 'PATH: ', style: labelStyle),
+                    TextSpan(text: pathUrl, style: valueStyle?.copyWith(
+                      fontFamily: 'monospace',
+                      fontSize: 11,
+                    )),
+                  ],
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ),
         ),
       );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isRunning = false;
-        });
-      }
     }
-  }
+    if (showBranch) {
+      addCell(
+        _TargetScopeCell(
+          child: SelectionArea(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(text: 'Branch: ', style: labelStyle),
+                  TextSpan(
+                    text: branchValue,
+                    style: valueStyle?.copyWith(
+                      fontFamily:
+                          branchRaw.trim().isNotEmpty ? 'monospace' : null,
+                      fontSize: branchRaw.trim().isNotEmpty ? 12 : null,
+                    ),
+                  ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+      );
+    }
+    if (showCommit) {
+      addCell(
+        _TargetScopeCell(
+          child: SelectionArea(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(text: 'Commit: ', style: labelStyle),
+                  TextSpan(
+                    text: commitValue,
+                    style: valueStyle?.copyWith(
+                      fontFamily: scope.commitRevision != null
+                          ? 'monospace'
+                          : null,
+                      fontFeatures: scope.commitRevision != null
+                          ? const [FontFeature.tabularFigures()]
+                          : null,
+                    ),
+                  ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+      );
+    }
 
-  @override
-  Widget build(BuildContext context) {
-    return FilledButton.icon(
-      onPressed: _isRunning ? null : _generate,
-      icon: _isRunning
-          ? const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : const Icon(Icons.auto_awesome_rounded),
-      label: Text(
-        _isRunning
-            ? t(context, 'AI 分析中', 'AI Analyzing')
-            : t(context, 'AI 專案分析', 'AI Project Analysis'),
-      ),
-    );
-  }
-}
-
-class ProjectReportAnalysisPage extends StatelessWidget {
-  const ProjectReportAnalysisPage({
-    super.key,
-    required this.repository,
-    required this.settings,
-    required this.titleController,
-    required this.promptController,
-    required this.onBack,
-  });
-
-  final SvnRepository repository;
-  final AppSettings settings;
-  final TextEditingController titleController;
-  final TextEditingController promptController;
-  final VoidCallback onBack;
-
-  @override
-  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        AuraBackPageHeader(
-          onBack: onBack,
-          title: t(context, 'AI 專案分析', 'AI Project Analysis'),
-          subtitle: repository.name,
-        ),
-        Expanded(
-          child: Card(
-            color: _aiReportNightCardFill(context),
-            surfaceTintColor: Colors.transparent,
-            elevation: 0,
-            shape: _aiReportCardShape(context),
-            child: _ProjectReportConsoleSheet(
-              repository: repository,
-              settings: settings,
-              titleController: titleController,
-              promptController: promptController,
-              showConsoleHeading: false,
-            ),
+        Text(
+          t(context, '目標範圍', 'Target scope'),
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: a.textMuted,
           ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: rowChildren,
         ),
       ],
     );
   }
 }
 
-/// SVN 專案 AI 對話助理（沿用舊版邏輯：組 prompt 後走 [generateProjectReportStream]）。
+class _TargetScopeCell extends StatelessWidget {
+  const _TargetScopeCell({
+    required this.child,
+  });
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final a = aura(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderColor = a.border.withOpacity(isDark ? 0.28 : 0.38);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: borderColor, width: 0.75),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: child,
+      ),
+    );
+  }
+}
+
+/// SVN 專案 AI助理（沿用舊版邏輯：組 prompt 後走 [generateProjectReportStream]）。
 class ProjectChatMessage {
   const ProjectChatMessage({
     required this.role,
@@ -160,11 +230,17 @@ class ProjectChatPage extends StatefulWidget {
     required this.repository,
     required this.settings,
     required this.onBack,
+    this.focusBranchPath,
+    this.focusCommitRevision,
   });
 
   final SvnRepository repository;
   final AppSettings settings;
   final VoidCallback onBack;
+  /// 為 null 時代表僅針對整個倉庫（由主頁進入）。
+  final String? focusBranchPath;
+  /// 為 null 時代表未鎖定單一修訂；與 [focusBranchPath] 併用時為該分支上的修訂。
+  final int? focusCommitRevision;
 
   @override
   State<ProjectChatPage> createState() => _ProjectChatPageState();
@@ -177,25 +253,109 @@ class _ProjectChatPageState extends State<ProjectChatPage> {
   bool _isSending = false;
   String? _error;
 
+  // Chat history / auto-save
+  String? _sessionId;
+  DateTime? _sessionCreatedAt;
+  /// 自歷史載入的 `chat_scope`；null 表示沿用目前頁面（widget）範圍。
+  PersistedChatScope? _scopeOverride;
+
+  PersistedChatScope get _effectiveScope => _scopeOverride ??
+      PersistedChatScope.fromLive(
+        repository: widget.repository,
+        focusBranchPath: widget.focusBranchPath,
+        focusCommitRevision: widget.focusCommitRevision,
+      );
+
   @override
   void initState() {
     super.initState();
+    final branchBlock = _focusBranchBlockForSystem();
+    final commitBlock = _focusCommitBlockForSystem();
     _messages.add(ProjectChatMessage(
       role: 'system',
       content: '''
-你是這個 SVN 專案的 AI 對話助理。
-請使用倉庫上下文回答問題，並在適當時主動詢問使用者是否要生成摘要報告。
-如果使用者要求報告，請直接產生 Markdown 格式摘要報告。
+你是這個 SVN 專案的 AI助理。
+請使用倉庫上下文回答問題。
+
+回覆風格規則：
+- 如果使用者明確要求報告，直接產生完整 Markdown 格式報告，結尾不要再詢問是否需要報告。
+- 如果你的回覆本身已包含多個章節、條列、或程式碼區塊等結構化內容，視同已提供報告，結尾不要再詢問是否需要報告。
+- 只有在回覆是簡短的對話式回答（無結構化內容）時，才可以詢問是否需要進一步產出正式摘要報告。
+- 不要在同一則回覆中既產出結構化報告、又詢問是否需要報告，這會造成矛盾。
+
 你可以提出 SVN 指令或檔案查找建議，讓使用者在對話中進一步查詢。
 
 倉庫名稱：${widget.repository.name}
 Repository URL：${widget.repository.url}
-''',
+$branchBlock$commitBlock''',
     ));
+    _inputController.addListener(_onChatInputChanged);
+  }
+
+  void _onChatInputChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// 與輸入框 [TextField] 的換行邏輯對齊，用於判斷是否為單行以置中送出鈕。
+  int _chatInputLineCount({
+    required String text,
+    required double innerMaxWidth,
+    required TextStyle style,
+    required TextScaler textScaler,
+  }) {
+    if (innerMaxWidth <= 1) {
+      return 1;
+    }
+    final painter = TextPainter(
+      textDirection: TextDirection.ltr,
+      textScaler: textScaler,
+      text: TextSpan(
+        text: text.isEmpty ? ' ' : text,
+        style: style,
+      ),
+    )..layout(maxWidth: innerMaxWidth);
+    final metrics = painter.computeLineMetrics();
+    return metrics.isEmpty ? 1 : metrics.length;
+  }
+
+  String _focusBranchBlockForSystem() {
+    final p = widget.focusBranchPath?.trim();
+    if (p == null || p.isEmpty) {
+      return '';
+    }
+    return '''
+
+目前對話關注分支（SVN 路徑）：$p
+請優先以此分支的變更與脈絡回答；若使用者未指定其他範圍，預設在此分支上思考。''';
+  }
+
+  String _focusCommitBlockForSystem() {
+    final r = widget.focusCommitRevision;
+    if (r == null) {
+      return '';
+    }
+    return '''
+
+目前對話關注修訂版本：r$r
+請優先以此修訂的變更內容回答；若使用者未指定其他範圍，預設以此修訂為主。''';
+  }
+
+  @override
+  void didUpdateWidget(covariant ProjectChatPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.repository.name != widget.repository.name ||
+        oldWidget.repository.url != widget.repository.url ||
+        oldWidget.focusBranchPath != widget.focusBranchPath ||
+        oldWidget.focusCommitRevision != widget.focusCommitRevision) {
+      setState(() {
+        _scopeOverride = null;
+      });
+    }
   }
 
   @override
   void dispose() {
+    _inputController.removeListener(_onChatInputChanged);
     _inputController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -219,7 +379,7 @@ Repository URL：${widget.repository.url}
         settings: widget.settings,
         repository: widget.repository,
         reportTitle:
-            'Chat Assistant Response ${DateTime.now().toIso8601String()}',
+            'AI Assistant Response ${DateTime.now().toIso8601String()}',
         userPrompt: prompt,
         onLog: (_) {},
       );
@@ -229,11 +389,15 @@ Repository URL：${widget.repository.url}
       setState(() {
         _messages.add(ProjectChatMessage(
           role: 'assistant',
-          content: result.report.trim(),
+          content: _appendAssistantScopeSignatureMarkdown(
+            result.report.trim(),
+            context,
+          ),
         ));
         _isSending = false;
       });
       _scrollToBottom();
+      _autoSave();
     } catch (error) {
       if (!mounted) {
         return;
@@ -249,14 +413,34 @@ Repository URL：${widget.repository.url}
     final buffer = StringBuffer();
     buffer.writeln('你是 SVN 倉庫的對話式 AI 助手。');
     buffer.writeln('請以簡潔、友善的方式回答問題。');
-    buffer.writeln(
-        '如果使用者沒有直接要求報告，請先回答問題，並主動詢問是否需要生成摘要報告。');
-    buffer.writeln('如果需要，請直接生成 Markdown 格式摘要報告。');
+    buffer.writeln();
+    buffer.writeln('【回覆風格規則】');
+    buffer.writeln('1. 如果使用者明確要求報告，直接產生完整 Markdown 格式報告，結尾不要再詢問是否需要報告。');
+    buffer.writeln('2. 如果你的回覆本身已包含多個章節標題（##）、條列項目、或程式碼區塊等結構化內容，'
+        '視同已提供報告，結尾絕對不要再詢問「是否需要報告」，避免矛盾。');
+    buffer.writeln('3. 只有在回覆是短篇的對話式回答（無結構化 Markdown 內容）時，'
+        '才可以在最後詢問是否需要進一步產出正式摘要報告。');
+    buffer.writeln('4. 嚴禁在同一則回覆中既產出結構化 Markdown 報告、又詢問是否需要報告。');
+    buffer.writeln();
     buffer.writeln('你可以建議使用者查詢哪些 SVN 指令或文件。');
     buffer.writeln();
     buffer.writeln('倉庫背景：');
     buffer.writeln('Repository Name: ${widget.repository.name}');
-    buffer.writeln('Repository URL: ${widget.repository.url}');
+    final scope = _effectiveScope;
+    final urlForPrompt = scope.svnPresent &&
+            (scope.svnUrl != null && scope.svnUrl!.trim().isNotEmpty)
+        ? scope.svnUrl!.trim()
+        : widget.repository.url;
+    buffer.writeln('Repository URL: $urlForPrompt');
+    if (scope.branchPresent) {
+      final raw = scope.branchPath ?? '';
+      if (raw.trim().isNotEmpty) {
+        buffer.writeln('Focus Branch (SVN path): $raw');
+      }
+    }
+    if (scope.commitPresent && scope.commitRevision != null) {
+      buffer.writeln('Focus Revision: r${scope.commitRevision}');
+    }
     buffer.writeln();
     buffer.writeln('對話紀錄：');
     for (final message in _messages) {
@@ -267,6 +451,38 @@ Repository URL：${widget.repository.url}
       }
     }
     return buffer.toString();
+  }
+
+  /// 在 AI 產生的 Markdown 結尾空一行後加上「本文範圍」區塊（GitHub NOTE 語法），供顯示與下載 MD 一致。
+  String _appendAssistantScopeSignatureMarkdown(
+    String body,
+    BuildContext context,
+  ) {
+    final line = _markdownScopeNoteLine(context);
+    return '$body\n\n> [!NOTE]\n'
+        '> 本文範圍：$line\n';
+  }
+
+  String _markdownScopeNoteLine(BuildContext context) {
+    final scope = _effectiveScope;
+    final repo = widget.repository.name.replaceAll('\n', ' ').trim();
+    final parts = <String>['Project: $repo'];
+    if (scope.branchPresent) {
+      final raw = scope.branchPath ?? '';
+      final branch = raw.trim().isEmpty
+          ? t(context, '（整個倉庫）', '(Whole repository)')
+          : raw.replaceAll('\n', ' ');
+      parts.add('Branch: $branch');
+    }
+    if (scope.commitPresent) {
+      final rev = scope.commitRevision;
+      parts.add(
+        rev != null
+            ? 'Commit: r$rev'
+            : t(context, '（未指定單筆修訂）', '(No single revision)'),
+      );
+    }
+    return parts.join(', ');
   }
 
   void _scrollToBottom() {
@@ -288,6 +504,149 @@ Repository URL：${widget.repository.url}
     );
   }
 
+  // ── History / auto-save ───────────────────────────────────────────────────
+
+  Future<void> _autoSave() async {
+    if (widget.settings.notesRootPath.isEmpty) return;
+
+    // Collect only user/assistant messages (skip system)
+    final msgs = _messages
+        .where((m) => m.role == 'user' || m.role == 'assistant')
+        .map((m) => {'role': m.role, 'content': m.content})
+        .toList();
+    if (msgs.isEmpty) return;
+
+    final now = DateTime.now();
+    _sessionId ??= ChatSession.generateId(widget.repository.name);
+    _sessionCreatedAt ??= now;
+
+    final firstUserContent =
+        msgs.firstWhere((m) => m['role'] == 'user',
+            orElse: () => {'role': 'user', 'content': ''})['content'] ??
+            '';
+
+    final session = ChatSession(
+      id: _sessionId!,
+      repoName: widget.repository.name,
+      title: ChatSession.titleFromFirstMessage(firstUserContent),
+      createdAt: _sessionCreatedAt!,
+      updatedAt: now,
+      messages: msgs,
+      chatScope: _effectiveScope,
+    );
+
+    await ChatHistoryStore.save(session, widget.settings.notesRootPath);
+  }
+
+  Future<void> _openHistory() async {
+    if (widget.settings.notesRootPath.isEmpty) return;
+    if (!mounted) return;
+
+    final session = await showChatHistoryDialog(
+      context: context,
+      notesRootPath: widget.settings.notesRootPath,
+      repoName: widget.repository.name,
+    );
+    if (session == null || !mounted) return;
+    _restoreSession(session);
+  }
+
+  void _restoreSession(ChatSession session) {
+    // Confirm if current chat already has messages
+    final hasCurrentChat =
+        _messages.any((m) => m.role == 'user' || m.role == 'assistant');
+
+    if (hasCurrentChat) {
+      showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(t(ctx, '載入對話記錄', 'Load Session')),
+          content: Text(t(
+            ctx,
+            '目前的對話將被取代，確定要載入「${session.title}」嗎？',
+            'Current chat will be replaced. Load "${session.title}"?',
+          )),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(t(ctx, '取消', 'Cancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(t(ctx, '載入', 'Load')),
+            ),
+          ],
+        ),
+      ).then((confirmed) {
+        if (confirmed == true) _applySession(session);
+      });
+    } else {
+      _applySession(session);
+    }
+  }
+
+  void _applySession(ChatSession session) {
+    setState(() {
+      // Keep system message at index 0, replace the rest
+      final systemMsg =
+          _messages.where((m) => m.role == 'system').toList();
+      _messages
+        ..clear()
+        ..addAll(systemMsg)
+        ..addAll(session.messages.map(
+            (m) => ProjectChatMessage(role: m['role']!, content: m['content']!)));
+      _sessionId = session.id;
+      _sessionCreatedAt = session.createdAt;
+      _scopeOverride = session.chatScope;
+      _error = null;
+    });
+    _scrollToBottom();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+
+  String _generateFilename(String content) {
+    // Try first H1 or H2 heading
+    final headingMatch =
+        RegExp(r'^#{1,2}\s+(.+)$', multiLine: true).firstMatch(content);
+    String base;
+    if (headingMatch != null) {
+      base = headingMatch.group(1)!;
+    } else {
+      // Fall back to first non-empty line
+      base = content.split('\n').firstWhere(
+            (l) => l.trim().isNotEmpty,
+            orElse: () => 'ai_response',
+          );
+    }
+    // Strip markdown inline symbols and path-unsafe characters
+    base = base.replaceAll(RegExp(r'[*_`#\[\]()!]'), '');
+    base = base.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+    base = base.trim();
+    if (base.length > 60) base = base.substring(0, 60).trim();
+    if (base.isEmpty) base = 'ai_response';
+    return '$base.md';
+  }
+
+  Future<void> _downloadMarkdown(BuildContext context, String content) async {
+    final filename = _generateFilename(content);
+    final path = await FilePicker.platform.saveFile(
+      dialogTitle: t(context, '儲存 Markdown', 'Save Markdown'),
+      fileName: filename,
+      type: FileType.custom,
+      allowedExtensions: ['md'],
+    );
+    if (path == null) return;
+    await File(path).writeAsString(content);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(t(context, '已儲存：$path', 'Saved: $path')),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -297,13 +656,13 @@ Repository URL：${widget.repository.url}
     final examples = [
       t(
         context,
-        '請分析這個 SVN 專案的分支狀態，並問我是否要生成摘要報告。',
-        'Please analyze this SVN repository and ask me whether to generate a summary report.',
+        '請分析這個 SVN 專案的分支狀態，並產生摘要報告。',
+        'Please analyze this SVN repository and generate a summary report.',
       ),
       t(
         context,
-        '幫我找出最近一次 release 的關鍵變更，並詢問是否需要報告。',
-        'Help me find the key changes from the latest release and ask if a report is needed.',
+        '幫我找出最近一次 release 的關鍵變更，並產生報告。',
+        'Help me find the key changes from the latest release and generate a report.',
       ),
       t(
         context,
@@ -317,11 +676,52 @@ Repository URL：${widget.repository.url}
       children: [
         AuraBackPageHeader(
           onBack: widget.onBack,
-          title: t(context, 'AI 對話助理', 'AI Chat Assistant'),
+          title: t(context, 'AI助理', 'AI Assistant'),
           subtitle: t(
             context,
             '以對話提問；需要摘要報告時直接說明即可。',
             'Ask in chat; request a summary report when you need one.',
+          ),
+          trailing: Tooltip(
+            message: 'History',
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: _openHistory,
+                borderRadius: BorderRadius.circular(22),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        'History',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: isDark ? a.accent : a.textMuted,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.15,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Icon(
+                        Icons.history_rounded,
+                        size: 22,
+                        color: isDark ? a.accent : a.textMuted,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _AiChatScopeStrip(
+            repositoryName: widget.repository.name,
+            scope: _effectiveScope,
           ),
         ),
         Expanded(
@@ -338,14 +738,6 @@ Repository URL：${widget.repository.url}
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        t(context, '提示範例', 'Prompt examples'),
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: a.text,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
                       Wrap(
                         spacing: 10,
                         runSpacing: 10,
@@ -386,7 +778,6 @@ Repository URL：${widget.repository.url}
                     ],
                   ),
                 ),
-                const Divider(height: 1),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -431,10 +822,32 @@ Repository URL：${widget.repository.url}
                                           : theme.colorScheme.onPrimaryContainer,
                                     ),
                                   )
-                                : MarkdownBody(
-                                    data: message.content,
-                                    selectable: true,
-                                    styleSheet: auraMarkdownStyle(context),
+                                : Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Align(
+                                        alignment: Alignment.centerRight,
+                                        child: _ChatDownloadButton(
+                                          onPressed: () => _downloadMarkdown(
+                                              context, message.content),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      MarkdownBody(
+                                        data: message.content,
+                                        selectable: true,
+                                        styleSheet: auraMarkdownStyle(context),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Align(
+                                        alignment: Alignment.centerRight,
+                                        child: _ChatDownloadButton(
+                                          onPressed: () => _downloadMarkdown(
+                                              context, message.content),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                           ),
                         );
@@ -448,1136 +861,130 @@ Repository URL：${widget.repository.url}
                     horizontal: 14,
                     vertical: 12,
                   ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _inputController,
-                          minLines: 1,
-                          maxLines: 4,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: a.text,
-                          ),
-                          decoration: InputDecoration(
-                            filled: true,
-                            fillColor:
-                                isDark ? cyberMainPanel : theme.colorScheme.surface,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(color: a.border),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(
-                                color: a.border.withOpacity(0.75),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      const gap = 10.0;
+                      const reservedForSend = 104.0;
+                      const fieldHorizontalPadding = 24.0;
+                      final inputStyle = theme.textTheme.bodyMedium
+                          ?.copyWith(color: a.text);
+                      final innerW = (constraints.maxWidth -
+                              gap -
+                              reservedForSend -
+                              fieldHorizontalPadding)
+                          .clamp(8.0, double.infinity);
+                      final lineCount = inputStyle == null
+                          ? 1
+                          : _chatInputLineCount(
+                              text: _inputController.text,
+                              innerMaxWidth: innerW,
+                              style: inputStyle,
+                              textScaler: MediaQuery.textScalerOf(context),
+                            );
+                      final alignSingleLine = lineCount <= 1;
+
+                      return Row(
+                        crossAxisAlignment: alignSingleLine
+                            ? CrossAxisAlignment.center
+                            : CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _inputController,
+                              minLines: 1,
+                              maxLines: 4,
+                              style: inputStyle,
+                              decoration: InputDecoration(
+                                filled: true,
+                                fillColor: isDark
+                                    ? cyberMainPanel
+                                    : theme.colorScheme.surface,
+                                contentPadding:
+                                    const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(color: a.border),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(
+                                    color: a.border.withOpacity(0.75),
+                                  ),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                  borderSide: BorderSide(
+                                    color: isDark ? cyberAccent : a.accent,
+                                    width: 1.4,
+                                  ),
+                                ),
+                                hintText: t(
+                                  context,
+                                  '輸入你的問題，或請我生成摘要報告...',
+                                  'Type your question or ask for a summary report...',
+                                ),
+                                hintStyle: TextStyle(color: a.textMuted),
                               ),
+                              onSubmitted: _sendMessage,
                             ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(
-                                color: isDark ? cyberAccent : a.accent,
-                                width: 1.4,
-                              ),
-                            ),
-                            hintText: t(
-                              context,
-                              '輸入你的問題，或請我生成摘要報告...',
-                              'Type your question or ask for a summary report...',
-                            ),
-                            hintStyle: TextStyle(color: a.textMuted),
                           ),
-                          onSubmitted: _sendMessage,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      FilledButton(
-                        onPressed: _isSending
-                            ? null
-                            : () => _sendMessage(_inputController.text),
-                        child: _isSending
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : Text(t(context, '送出', 'Send')),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class ProjectReportHistoryPage extends StatefulWidget {
-  const ProjectReportHistoryPage({
-    super.key,
-    required this.repository,
-    required this.settings,
-    required this.onBack,
-  });
-
-  final SvnRepository repository;
-  final AppSettings settings;
-  final VoidCallback onBack;
-
-  @override
-  State<ProjectReportHistoryPage> createState() =>
-      _ProjectReportHistoryPageState();
-}
-
-class _ProjectReportHistoryPageState extends State<ProjectReportHistoryPage> {
-  late Future<List<ProjectReportResult>> _future;
-
-  @override
-  void initState() {
-    super.initState();
-    _future = _load();
-  }
-
-  Future<List<ProjectReportResult>> _load() {
-    return loadProjectReportHistory(
-      settings: widget.settings,
-      repository: widget.repository,
-    );
-  }
-
-  void _refresh() {
-    setState(() {
-      _future = _load();
-    });
-  }
-
-  Future<void> _openReport(ProjectReportResult result) async {
-    final languageCode = LanguageScope.of(context);
-    await showDialog<void>(
-      context: context,
-      builder: (context) => LanguageScope(
-        languageCode: languageCode,
-        child: _ProjectReportDialog(result: result),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        AuraBackPageHeader(
-          onBack: widget.onBack,
-          title: t(context, '瀏覽歷史AI分析', 'Browse AI Analysis History'),
-          subtitle: widget.repository.name,
-          trailing: OutlinedButton.icon(
-            onPressed: _refresh,
-            icon: const Icon(Icons.refresh_rounded),
-            label: Text(t(context, '重新整理', 'Refresh')),
-          ),
-        ),
-        Expanded(
-          child: Card(
-            color: _aiReportNightCardFill(context),
-            surfaceTintColor: Colors.transparent,
-            elevation: 0,
-            shape: _aiReportCardShape(context),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: FutureBuilder<List<ProjectReportResult>>(
-                future: _future,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState != ConnectionState.done) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.hasError) {
-                    return _HistoryMessage(
-                      icon: Icons.error_outline_rounded,
-                      title: t(context, '讀取歷史分析失敗', 'Failed to Load History'),
-                      message: snapshot.error.toString(),
-                    );
-                  }
-                  final reports = snapshot.data ?? const [];
-                  if (reports.isEmpty) {
-                    return _HistoryMessage(
-                      icon: Icons.history_edu_rounded,
-                      title: t(context, '尚無歷史AI分析', 'No AI Analysis History'),
-                      message: t(
-                        context,
-                        '目前 Repo 還沒有儲存過 AI 分析報告。',
-                        'This repository does not have saved AI analysis reports yet.',
-                      ),
-                    );
-                  }
-
-                  return ListView.separated(
-                    itemCount: reports.length,
-                    separatorBuilder: (context, index) =>
-                        const SizedBox(height: 10),
-                    itemBuilder: (context, index) {
-                      final report = reports[index];
-                      return _ProjectReportHistoryTile(
-                        result: report,
-                        onOpen: () => _openReport(report),
+                          const SizedBox(width: gap),
+                          FilledButton(
+                            onPressed: _isSending
+                                ? null
+                                : () =>
+                                    _sendMessage(_inputController.text),
+                            child: _isSending
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : Text(t(context, '送出', 'Send')),
+                          ),
+                        ],
                       );
                     },
-                  );
-                },
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ProjectReportHistoryTile extends StatelessWidget {
-  const _ProjectReportHistoryTile({
-    required this.result,
-    required this.onOpen,
-  });
-
-  final ProjectReportResult result;
-  final VoidCallback onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final title = result.title.trim().isEmpty
-        ? t(context, '未命名分析報告', 'Untitled Analysis Report')
-        : result.title.trim();
-
-    return Material(
-      color: isDark ? cyberBase : aura(context).surfaceAlt,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(_kAiReportRadius),
-        side: BorderSide(color: aura(context).border),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(_kAiReportRadius),
-        onTap: onOpen,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CircleAvatar(
-                backgroundColor: theme.colorScheme.primary.withOpacity(0.12),
-                child: Icon(
-                  Icons.article_rounded,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        Chip(
-                          avatar: const Icon(Icons.schedule_rounded, size: 16),
-                          label: Text(_formatReportDate(result.createdAt)),
-                        ),
-                        if (result.model.isNotEmpty)
-                          Chip(
-                            avatar:
-                                const Icon(Icons.smart_toy_rounded, size: 16),
-                            label: Text(result.model),
-                          ),
-                      ],
-                    ),
-                    if (result.userPrompt.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        result.userPrompt,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: aura(context).textMuted,
-                        ),
-                      ),
-                    ],
-                    if (result.reportFile.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      SelectableText(
-                        result.reportFile,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: aura(context).textSubtle,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              IconButton(
-                tooltip: t(context, '開啟報告', 'Open Report'),
-                onPressed: onOpen,
-                icon: const Icon(Icons.open_in_new_rounded),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _HistoryMessage extends StatelessWidget {
-  const _HistoryMessage({
-    required this.icon,
-    required this.title,
-    required this.message,
-  });
-
-  final IconData icon;
-  final String title;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Center(
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 560),
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: Theme.of(context).brightness == Brightness.dark
-              ? cyberBase
-              : aura(context).surfaceAlt,
-          borderRadius: BorderRadius.circular(_kAiReportRadius),
-          border: Border.all(color: aura(context).border),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 42, color: theme.colorScheme.primary),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 8),
-            SelectableText(
-              message,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: aura(context).textMuted,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AiReportLabeledField extends StatelessWidget {
-  const _AiReportLabeledField({
-    required this.label,
-    required this.controller,
-    this.hintText,
-    this.prefixIcon,
-    this.enabled = true,
-    this.minLines,
-    this.maxLines,
-  });
-
-  final String label;
-  final TextEditingController controller;
-  final String? hintText;
-  final Widget? prefixIcon;
-  final bool enabled;
-  final int? minLines;
-  final int? maxLines;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.bodyLarge?.copyWith(
-            fontWeight: FontWeight.w500,
-            color: aura(context).text,
-            letterSpacing: 0,
-            height: 1.3,
-          ),
-        ),
-        const SizedBox(height: 6),
-        TextField(
-          controller: controller,
-          enabled: enabled,
-          minLines: minLines,
-          maxLines: maxLines,
-          decoration: InputDecoration(
-            hintText: hintText,
-            prefixIcon: prefixIcon,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ProjectReportConsoleSheet extends StatefulWidget {
-  const _ProjectReportConsoleSheet({
-    required this.repository,
-    required this.settings,
-    this.titleController,
-    this.promptController,
-    this.showConsoleHeading = true,
-  });
-
-  final SvnRepository repository;
-  final AppSettings settings;
-  final TextEditingController? titleController;
-  final TextEditingController? promptController;
-  /// 為 false 時不顯示「AI查詢」大標（頁面頂列已顯示時使用）。
-  final bool showConsoleHeading;
-
-  @override
-  State<_ProjectReportConsoleSheet> createState() =>
-      _ProjectReportConsoleSheetState();
-}
-
-class _ProjectReportConsoleSheetState
-    extends State<_ProjectReportConsoleSheet> {
-  late final TextEditingController _titleController;
-  late final TextEditingController _promptController;
-  late final bool _ownsTitleController;
-  late final bool _ownsPromptController;
-  final _logs = <ProjectReportLogEntry>[];
-  bool _isRunning = false;
-  bool _hasStarted = false;
-  String? _error;
-  ProjectReportResult? _result;
-
-  @override
-  void initState() {
-    super.initState();
-    _ownsTitleController = widget.titleController == null;
-    _ownsPromptController = widget.promptController == null;
-    _titleController = widget.titleController ?? TextEditingController();
-    _promptController = widget.promptController ?? TextEditingController();
-    if (_titleController.text.trim().isEmpty) {
-      _titleController.text =
-          _defaultProjectReportTitle(widget.repository.name);
-    }
-  }
-
-  @override
-  void dispose() {
-    if (_ownsTitleController) {
-      _titleController.dispose();
-    }
-    if (_ownsPromptController) {
-      _promptController.dispose();
-    }
-    super.dispose();
-  }
-
-  Future<void> _run() async {
-    if (_isRunning) {
-      return;
-    }
-    final reportTitle = _titleController.text.trim();
-    final userPrompt = _promptController.text.trim();
-    setState(() {
-      _isRunning = true;
-      _hasStarted = true;
-      _error = null;
-      _result = null;
-      _logs.clear();
-    });
-    _addLogText('Console 已啟動，準備呼叫本地後端');
-    _addLogText('報告標題：${reportTitle.isEmpty ? '(由後端自動產生)' : reportTitle}');
-    if (userPrompt.isNotEmpty) {
-      _addLogText('使用者 prompt：$userPrompt');
-    } else {
-      _addLogText('未輸入使用者 prompt，將產生一般專案級報告');
-    }
-    try {
-      final result = await generateProjectReportStream(
-        settings: widget.settings,
-        repository: widget.repository,
-        reportTitle: reportTitle,
-        userPrompt: userPrompt,
-        onLog: _addLog,
-      );
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _result = result;
-        _isRunning = false;
-      });
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _openReportDialog(result);
-        }
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      _addLogText('專案級報告失敗：$error', level: 'error');
-      setState(() {
-        _error = error.toString();
-        _isRunning = false;
-      });
-    }
-  }
-
-  void _addLog(ProjectReportLogEntry entry) {
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _logs.add(entry);
-    });
-  }
-
-  void _addLogText(String message, {String level = 'info'}) {
-    _addLog(ProjectReportLogEntry(
-      level: level,
-      message: message,
-      time: DateTime.now(),
-    ));
-  }
-
-  Future<void> _openReportDialog(ProjectReportResult result) async {
-    final languageCode = LanguageScope.of(context);
-    await showDialog<void>(
-      context: context,
-      builder: (context) => LanguageScope(
-        languageCode: languageCode,
-        child: _ProjectReportDialog(result: result),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final result = _result;
-    final fieldTheme = theme.copyWith(
-      inputDecorationTheme: theme.inputDecorationTheme.copyWith(
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(5),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(5),
-          borderSide: BorderSide(color: aura(context).border),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(5),
-          borderSide: BorderSide(color: theme.colorScheme.primary),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(5),
-          borderSide: BorderSide(color: theme.colorScheme.error),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(5),
-          borderSide: BorderSide(color: theme.colorScheme.error, width: 2),
-        ),
-      ),
-    );
-
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 6, 20, 20),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight - 26),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-          if (widget.showConsoleHeading)
-            Row(
-            children: [
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: theme.colorScheme.primary.withOpacity(0.12),
-                child: Icon(
-                  _error == null
-                      ? Icons.auto_awesome_rounded
-                      : Icons.error_outline_rounded,
-                  size: 20,
-                  color:
-                      _error == null ? theme.colorScheme.primary : Colors.red,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      t(context, 'AI查詢', 'AI Query'),
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 24,
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Model: ${widget.settings.ollamaModel}, Base URL: ${widget.settings.ollamaBaseUrl}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFF00DBE7),
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              if (_isRunning)
-                const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-            ],
-          ),
-          if (widget.showConsoleHeading) const SizedBox(height: 22),
-          Theme(
-            data: fieldTheme,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _AiReportLabeledField(
-                  label: t(context, '輸出文件標題', 'Output Document Title'),
-                  controller: _titleController,
-                  enabled: !_isRunning,
-                  hintText: t(
-                    context,
-                    '例如：登入逾時修改分析',
-                    'Example: Login timeout change analysis',
                   ),
-                  prefixIcon: const Icon(Icons.title_rounded),
-                ),
-                const SizedBox(height: 12),
-                _AiReportLabeledField(
-                  label: t(
-                    context,
-                    '分析要求（可留空）',
-                    'Analysis Prompt (optional)',
-                  ),
-                  controller: _promptController,
-                  enabled: !_isRunning,
-                  minLines: 2,
-                  maxLines: 4,
-                  hintText: t(
-                    context,
-                    '例如：幫我找有關於 xxxx 修改的 commit 節點，並給出分析報告',
-                    'Example: Find commits related to xxxx changes and produce an analysis report',
-                  ),
-                  prefixIcon: const Icon(Icons.manage_search_rounded),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              FilledButton.icon(
-                onPressed: _isRunning ? null : _run,
-                icon: _isRunning
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.play_arrow_rounded),
-                label: Text(_result == null
-                    ? t(context, '開始分析', 'Start Analysis')
-                    : t(context, '重新分析', 'Analyze Again')),
-              ),
-              Text(
-                t(
-                  context,
-                  'Prompt 會送到本地後端，並納入 Ollama 分析上下文。',
-                  'The prompt is sent to the local backend and included in the Ollama analysis context.',
-                ),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: aura(context).textMuted,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _ConsolePanel(logs: _logs),
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            SelectableText(
-              _error!,
-              style: const TextStyle(
-                color: Colors.red,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-          if (result != null) ...[
-            const SizedBox(height: 12),
-            _ReportReadyPanel(
-              result: result,
-              onOpenReport: () => _openReportDialog(result),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Center(
-                child: Text(
-                  t(
-                    context,
-                    'Markdown 報告已在獨立彈出視窗顯示。你也可以按上方按鈕重新開啟。',
-                    'The Markdown report is shown in a separate dialog. You can reopen it with the button above.',
-                  ),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: aura(context).textMuted,
-                  ),
-                ),
-              ),
-            ),
-          ] else
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Center(
-                child: Text(
-                  !_hasStarted
-                      ? t(
-                          context,
-                          '請輸入分析要求後按「開始分析」。',
-                          'Enter an analysis prompt and click Start Analysis.',
-                        )
-                      : _isRunning
-                          ? t(
-                              context,
-                              '等待 AI 回應中，Console 會持續保留目前進度。',
-                              'Waiting for the AI response. The console will keep the current progress.',
-                            )
-                          : t(
-                              context,
-                              '沒有產生報告內容。',
-                              'No report content was generated.',
-                            ),
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: aura(context).textMuted,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ConsolePanel extends StatelessWidget {
-  const _ConsolePanel({required this.logs});
-
-  final List<ProjectReportLogEntry> logs;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final a = aura(context);
-    final text = logs.isEmpty
-        ? t(context, '尚無輸出', 'No output yet')
-        : logs
-            .map((log) =>
-                '[${_formatLogTime(log.time)}] ${log.level.toUpperCase()}  ${log.message}')
-            .join('\n');
-
-    return Container(
-      width: double.infinity,
-      height: 210,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: isDark ? cyberBase : a.surfaceAlt,
-        borderRadius: BorderRadius.circular(_kAiReportRadius),
-        border: Border.all(color: a.border),
-      ),
-      child: SingleChildScrollView(
-        reverse: true,
-        child: SelectableText(
-          text,
-          style: TextStyle(
-            color: isDark ? const Color(0xFFE2E8F0) : a.text,
-            fontFamily: 'monospace',
-            fontSize: 12,
-            height: 1.35,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ReportReadyPanel extends StatelessWidget {
-  const _ReportReadyPanel({
-    required this.result,
-    required this.onOpenReport,
-  });
-
-  final ProjectReportResult result;
-  final VoidCallback onOpenReport;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: isDark ? cyberBase : aura(context).surfaceAlt,
-        borderRadius: BorderRadius.circular(_kAiReportRadius),
-        border: Border.all(color: aura(context).border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.check_circle_rounded,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  result.title.isEmpty
-                      ? t(context, 'Markdown 報告已產生',
-                          'Markdown report generated')
-                      : result.title,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: onOpenReport,
-                icon: const Icon(Icons.open_in_new_rounded),
-                label: Text(t(context, '開啟報告視窗', 'Open Report')),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (result.userPrompt.isNotEmpty) ...[
-            InfoLine(label: 'Prompt', value: result.userPrompt),
-            const SizedBox(height: 8),
-          ],
-          InfoLine(label: t(context, '檔案', 'File'), value: result.reportFile),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProjectReportDialog extends StatelessWidget {
-  const _ProjectReportDialog({required this.result});
-
-  final ProjectReportResult result;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final size = MediaQuery.of(context).size;
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Dialog(
-      insetPadding: const EdgeInsets.all(28),
-      backgroundColor: isDark ? cyberBase : null,
-      surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(_kAiReportRadius),
-        side: BorderSide(color: aura(context).border),
-      ),
-      child: SizedBox(
-        width: size.width * 0.9,
-        height: size.height * 0.88,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 18, 22, 22),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor:
-                        theme.colorScheme.primary.withOpacity(0.12),
-                    child: Icon(
-                      Icons.article_rounded,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          result.title.isEmpty
-                              ? '${result.repoName} ${t(context, 'Markdown 分析報告', 'Markdown Analysis Report')}'
-                              : result.title,
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          result.userPrompt.isEmpty
-                              ? 'Model: ${result.model}'
-                              : 'Model: ${result.model} · Prompt: ${result.userPrompt}',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: t(context, '關閉', 'Close'),
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Expanded(child: _ReportContent(result)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ReportContent extends StatefulWidget {
-  const _ReportContent(this.result);
-
-  final ProjectReportResult result;
-
-  @override
-  State<_ReportContent> createState() => _ReportContentState();
-}
-
-class _ReportContentState extends State<_ReportContent> {
-  String _saveStatus = '已由後端自動儲存';
-
-  Future<void> _saveReport() async {
-    final path = widget.result.reportFile.trim();
-    if (path.isEmpty) {
-      setState(() {
-        _saveStatus = '沒有可儲存的報告路徑。';
-      });
-      return;
-    }
-
-    try {
-      final file = File(path);
-      await file.parent.create(recursive: true);
-      await file.writeAsString(widget.result.report, encoding: utf8);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _saveStatus = '已儲存：${DateTime.now().toLocal()}';
-      });
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _saveStatus = '儲存失敗：$error';
-      });
-    }
-  }
-
-  Future<void> _showInFileExplorer() async {
-    final path = widget.result.reportFile.trim();
-    if (path.isEmpty) {
-      return;
-    }
-
-    try {
-      if (Platform.isWindows) {
-        await Process.start('explorer.exe', ['/select,$path']);
-      } else {
-        await Process.start('open', [File(path).parent.path]);
-      }
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _saveStatus = '開啟檔案位置失敗：$error';
-      });
-    }
-  }
-
-  Future<void> _copyMarkdown() async {
-    await Clipboard.setData(ClipboardData(text: widget.result.report));
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _saveStatus = '已複製 Markdown 原文';
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: isDark ? cyberBase : aura(context).surfaceAlt,
-            borderRadius: BorderRadius.circular(_kAiReportRadius),
-            border: Border.all(color: aura(context).border),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  FilledButton.icon(
-                    onPressed: _saveReport,
-                    icon: const Icon(Icons.save_rounded),
-                    label: Text(t(context, '重新儲存', 'Save Again')),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _showInFileExplorer,
-                    icon: const Icon(Icons.folder_open_rounded),
-                    label:
-                        Text(t(context, '在檔案總管顯示', 'Show in File Explorer')),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _copyMarkdown,
-                    icon: const Icon(Icons.copy_rounded),
-                    label: Text(t(context, '複製 Markdown', 'Copy Markdown')),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              InfoLine(
-                  label: t(context, '檔案', 'File'),
-                  value: widget.result.reportFile),
-              const SizedBox(height: 6),
-              Text(
-                _localizedReportSaveStatus(context, _saveStatus),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: aura(context).textMuted,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Expanded(
-          child: Container(
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: isDark ? cyberBase : aura(context).surfaceAlt,
-              borderRadius: BorderRadius.circular(_kAiReportRadius),
-              border: Border.all(color: aura(context).border),
-            ),
-            child: Markdown(
-              data: widget.result.report,
-              selectable: true,
-              padding: const EdgeInsets.all(18),
-              styleSheet: auraMarkdownStyle(context),
-            ),
-          ),
         ),
       ],
     );
   }
 }
 
-String _formatLogTime(DateTime time) {
-  String two(int value) => value.toString().padLeft(2, '0');
-  return '${two(time.hour)}:${two(time.minute)}:${two(time.second)}';
+class _ChatDownloadButton extends StatelessWidget {
+  const _ChatDownloadButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final a = aura(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return TextButton.icon(
+      onPressed: onPressed,
+      icon: Icon(
+        Icons.download_rounded,
+        size: 15,
+        color: isDark ? a.accent : a.textMuted,
+      ),
+      label: Text(
+        t(context, '下載 MD', 'Download MD'),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: isDark ? a.accent : a.textMuted,
+            ),
+      ),
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    );
+  }
 }
 
-String _formatReportDate(DateTime? time) {
-  if (time == null) {
-    return '-';
-  }
-  String two(int value) => value.toString().padLeft(2, '0');
-  final local = time.toLocal();
-  return '${local.year}-${two(local.month)}-${two(local.day)} '
-      '${two(local.hour)}:${two(local.minute)}';
-}
-
-String _localizedReportSaveStatus(BuildContext context, String status) {
-  if (LanguageScope.of(context) != 'en') {
-    return status;
-  }
-  if (status == '已由後端自動儲存') {
-    return 'Automatically saved by backend';
-  }
-  if (status == '沒有可儲存的報告路徑。') {
-    return 'No report path available for saving.';
-  }
-  if (status.startsWith('已儲存：')) {
-    return 'Saved: ${status.substring('已儲存：'.length)}';
-  }
-  if (status.startsWith('儲存失敗：')) {
-    return 'Save failed: ${status.substring('儲存失敗：'.length)}';
-  }
-  if (status.startsWith('開啟檔案位置失敗：')) {
-    return 'Failed to open file location: ${status.substring('開啟檔案位置失敗：'.length)}';
-  }
-  if (status == '已複製 Markdown 原文') {
-    return 'Copied Markdown source';
-  }
-  return status;
-}
-
-String _defaultProjectReportTitle(String repoName) {
-  final now = DateTime.now();
-  String two(int value) => value.toString().padLeft(2, '0');
-  return '$repoName 專案級報告 ${now.year}-${two(now.month)}-${two(now.day)} ${two(now.hour)}:${two(now.minute)}';
-}

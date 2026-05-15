@@ -134,13 +134,13 @@ class SettingsView extends StatelessWidget {
             title: t(context, '設定', 'Settings'),
             description: t(
               context,
-              '管理介面語言、共享 Markdown 筆記、命令列、本地後端與 Ollama 設定。',
-              'Manage interface language, shared Markdown notes, commands, local backend, and Ollama settings.',
+              '管理介面語言、共享 Markdown 筆記、命令列、本地後端與 LLM 設定。',
+              'Manage interface language, shared Markdown notes, commands, local backend, and LLM settings.',
             ),
-            trailing: IconButton(
-              tooltip: t(context, '返回', 'Back'),
+            trailing: OutlinedButton.icon(
               onPressed: onClose,
-              icon: const Icon(Icons.close_rounded),
+              icon: const Icon(Icons.arrow_back_rounded),
+              label: Text(t(context, '返回', 'Back')),
             ),
             children: [
               Text(
@@ -299,11 +299,11 @@ class SettingsView extends StatelessWidget {
           const SizedBox(height: 16),
           SettingsSectionCard(
             icon: Icons.dns_rounded,
-            title: t(context, '本地後端與 Ollama', 'Local Backend and Ollama'),
+            title: t(context, '本地後端與 LLM', 'Local Backend and LLM'),
             description: t(
               context,
-              'Flutter client 會透過本地 Python 後端讀寫筆記、產生專案報告，後端再呼叫 Ollama 與受控 SVN tools。Ollama API Key 由本頁設定，不再讀取專案根目錄 .env。',
-              'The Flutter client uses the local Python backend to read/write notes and generate reports. The backend calls Ollama and controlled SVN tools. Configure the Ollama API key here; project .env files are no longer read.',
+              'Flutter client 會透過本地 Python 後端讀寫筆記、產生專案報告，後端再呼叫 LLM 與受控 SVN tools。LLM API Key 由本頁設定，不再讀取專案根目錄 .env。',
+              'The Flutter client uses the local Python backend to read/write notes and generate reports. The backend calls LLM and controlled SVN tools. Configure the LLM API key here; project .env files are no longer read.',
             ),
             children: [
               _SettingsLabeledField(
@@ -374,31 +374,31 @@ class SettingsView extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               _SettingsLabeledField(
-                label: 'Ollama Base URL',
+                label: 'LLM Base URL',
                 controller: ollamaUrlController,
                 hintText: t(
                   context,
-                  '例如：http://localhost:11434 或雲端 Ollama URL',
-                  'Example: http://localhost:11434 or a cloud Ollama URL',
+                  '例如：http://localhost:11434 或雲端 LLM URL',
+                  'Example: http://localhost:11434 or a cloud LLM URL',
                 ),
                 prefixIcon: const Icon(Icons.memory_rounded),
               ),
               const SizedBox(height: 12),
               _SettingsLabeledField(
-                label: 'Ollama Model',
+                label: 'LLM Model',
                 controller: ollamaModelController,
                 hintText: 'qwen3-coder-next',
                 prefixIcon: const Icon(Icons.smart_toy_rounded),
               ),
               const SizedBox(height: 12),
               _SettingsLabeledField(
-                label: 'Ollama API Key',
+                label: 'LLM API Key',
                 controller: ollamaApiKeyController,
                 obscureText: true,
                 hintText: t(
                   context,
-                  '雲端 Ollama 需要時填入；本機無認證可留空',
-                  'Required for cloud Ollama; leave blank for local unauthenticated servers',
+                  '雲端 LLM 需要時填入；本機無認證可留空',
+                  'Required for cloud LLM; leave blank for local unauthenticated servers',
                 ),
                 prefixIcon: const Icon(Icons.key_rounded),
               ),
@@ -419,7 +419,7 @@ class SettingsView extends StatelessWidget {
                           )
                         : const Icon(Icons.science_outlined),
                     label: Text(
-                      t(context, '測試 Ollama 連線', 'Test Ollama Connection'),
+                      t(context, '測試 LLM 連線', 'Test LLM Connection'),
                     ),
                   ),
                 ],
@@ -428,8 +428,8 @@ class SettingsView extends StatelessWidget {
               Text(
                 t(
                   context,
-                  '使用目前欄位內容（可不先儲存），由本地後端代為呼叫 Ollama；請先啟動後端並確認 URL／Model／API Key 正確。',
-                  'Uses the current field values (no need to save first); the local backend calls Ollama on your behalf. Start the backend and verify URL, model, and API key.',
+                  '使用目前欄位內容（可不先儲存），由本地後端代為呼叫 LLM；請先啟動後端並確認 URL／Model／API Key 正確。',
+                  'Uses the current field values (no need to save first); the local backend calls LLM on your behalf. Start the backend and verify URL, model, and API key.',
                 ),
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: aura(context).textMuted,
@@ -440,16 +440,22 @@ class SettingsView extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFFBEB),
+                  color: theme.brightness == Brightness.dark
+                      ? const Color(0xFF1A0800)
+                      : const Color(0xFFFFF0E8),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFF59E0B)),
+                  border: Border.all(
+                    color: theme.brightness == Brightness.dark
+                        ? const Color(0xFF6B2000)
+                        : const Color(0xFFE57A5A),
+                  ),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Icon(
                       Icons.warning_amber_rounded,
-                      color: Color(0xFFD97706),
+                      color: Color(0xFFFF79A8),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -459,8 +465,8 @@ class SettingsView extends StatelessWidget {
                           '安全提醒：API Key 會以明文儲存在本機 .runtime_configs/app_settings.json，僅建議用於受信任電腦。若此專案資料夾會分享、同步或提交版本控制，請先確認該檔案不會外流。',
                           'Security reminder: The API key is stored as plain text in local .runtime_configs/app_settings.json. Use this only on trusted machines. If this project folder is shared, synced, or committed to version control, make sure the file will not leak.',
                         ),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF92400E),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: const Color(0xFFFF79A8),
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -492,27 +498,9 @@ class SettingsView extends StatelessWidget {
                   OutlinedButton.icon(
                     onPressed: onClose,
                     icon: const Icon(Icons.arrow_back_rounded),
-                    label: Text(t(context, '返回資料檢視', 'Back to Data View')),
+                    label: Text(t(context, '返回', 'Back')),
                   ),
                 ],
-              ),
-              const SizedBox(height: 18),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: aura(context).surfaceAlt,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: aura(context).border),
-                ),
-                child: const SelectableText(
-                  'notes_root/\n'
-                  '  branch_notes_index.json\n'
-                  '  ET1289_AP/\n'
-                  '    branches/\n'
-                  '      BR263.md',
-                  style: TextStyle(fontFamily: 'monospace'),
-                ),
               ),
             ],
           ),
@@ -678,6 +666,9 @@ class RepositoryProfilesEditorState extends State<RepositoryProfilesEditor> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final profileTileFill =
+        isDark ? cyberSurfaceSoft : aura(context).surfaceAlt;
 
     final fieldTheme = theme.copyWith(
       inputDecorationTheme: theme.inputDecorationTheme.copyWith(
@@ -724,7 +715,7 @@ class RepositoryProfilesEditorState extends State<RepositoryProfilesEditor> {
             child: Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: cyberSurfaceSoft,
+                color: profileTileFill,
                 borderRadius: BorderRadius.circular(5),
                 border: Border.all(color: aura(context).border),
               ),
@@ -732,11 +723,20 @@ class RepositoryProfilesEditorState extends State<RepositoryProfilesEditor> {
                 children: [
                   Row(
                     children: [
+                      Icon(
+                        Icons.folder_special_rounded,
+                        size: 22,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: Text(
                           '${t(context, 'Profile', 'Profile')} ${index + 1}',
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.15,
+                            height: 1.2,
+                            color: aura(context).text,
                           ),
                         ),
                       ),
@@ -750,7 +750,15 @@ class RepositoryProfilesEditorState extends State<RepositoryProfilesEditor> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10, bottom: 4),
+                    child: Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: aura(context).border.withOpacity(0.55),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   Theme(
                     data: fieldTheme,
                     child: Column(

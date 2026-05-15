@@ -65,7 +65,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(0, 0);
   Win32Window::Size size(1664, 936);  // 1280x720 * 1.3
-  if (!window.Create(L"svn_branch_viewer_ui", origin, size)) {
+  if (!window.Create(L"Aura SVN", origin, size)) {
     return EXIT_FAILURE;
   }
   CenterWindowInWorkArea(window.GetHandle());

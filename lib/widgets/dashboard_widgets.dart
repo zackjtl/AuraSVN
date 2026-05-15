@@ -7,6 +7,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+String _repoAbbr(String name) {
+  if (name.isEmpty) return '?';
+  final first = name.runes.first;
+  if (first > 0x2E7F) {
+    // Full-width / CJK: show first character only
+    return String.fromCharCode(first);
+  }
+  // Half-width: first 2 characters, uppercased
+  return name.substring(0, name.length.clamp(0, 2)).toUpperCase();
+}
+
 class ControlPanel extends StatelessWidget {
   const ControlPanel({
     required this.selectedRepository,
@@ -99,7 +110,7 @@ class ControlPanel extends StatelessWidget {
                 backgroundColor:
                     theme.colorScheme.primary.withOpacity(0.14),
                 child: Text(
-                  selectedRepository.name.replaceAll('_AP', '').substring(2),
+                  _repoAbbr(selectedRepository.name),
                   style: TextStyle(
                     color: theme.colorScheme.primary,
                     fontWeight: FontWeight.w600,
@@ -198,14 +209,6 @@ class ControlPanel extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: InfoLine(label: 'URL', value: selectedRepository.url),
                 ),
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: InfoLine(
-                    label: t(context, '專案根目錄', 'Project Root'),
-                    value: rootPath,
-                  ),
-                ),
                 const SizedBox(height: 18),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -297,15 +300,20 @@ class RepositoryTile extends StatelessWidget {
       child: InkWell(
         onTap: enabled ? onTap : null,
         borderRadius: BorderRadius.circular(10),
+        hoverColor: isDark
+            ? Colors.white.withOpacity(0.05)
+            : tokens.accent.withOpacity(0.06),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 160),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             color: selected
                 ? theme.colorScheme.primary.withOpacity(isDark ? 0.12 : 0.08)
-                : (isDark ? cyberSurfaceSoft : tokens.surfaceSoft),
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: borderColor),
+            border: selected
+                ? Border.all(color: borderColor)
+                : Border.all(color: Colors.transparent),
           ),
           child: Row(
             children: [

@@ -14,6 +14,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:graphview/GraphView.dart' as graphview;
 
+/// 大於 Flutter [InteractiveViewer] 預設 200 時，滾輪／觸控板縮放每一步變化較小。
+const double _kBranchMapScrollScaleFactor = 420;
+
 class BranchMapView extends StatefulWidget {
   const BranchMapView({
     super.key,
@@ -21,6 +24,8 @@ class BranchMapView extends StatefulWidget {
     required this.data,
     required this.settings,
     this.onBranchSelected,
+    this.onAiChatForBranch,
+    this.onCheckoutBranch,
     this.onBranchMapOrientationChanged,
     this.showTitleOverlay = true,
   });
@@ -29,6 +34,10 @@ class BranchMapView extends StatefulWidget {
   final AppData data;
   final AppSettings settings;
   final ValueChanged<String>? onBranchSelected;
+  /// 從地圖節點開啟 AI 時帶入該節點 SVN 路徑。
+  final ValueChanged<String>? onAiChatForBranch;
+  /// 從地圖節點開啟 Checkout 時帶入該節點路徑。
+  final ValueChanged<String>? onCheckoutBranch;
   /// 與 [AppSettings.branchMapOrientation]／graphview Buchheim 一致（例如 `1` 縱向、`3` 橫向）。
   final ValueChanged<int>? onBranchMapOrientationChanged;
   /// 為 false 時不顯示左上角資訊卡（全頁已由外層標題列呈現時使用）。
@@ -212,6 +221,7 @@ class _BranchMapViewState extends State<BranchMapView> {
               boundaryMargin: const EdgeInsets.all(double.infinity),
               minScale: 0.1,
               maxScale: 2.5,
+              scaleFactor: _kBranchMapScrollScaleFactor,
               child: Padding(
                 padding: const EdgeInsets.all(80),
                 child: graphview.GraphView(
@@ -246,6 +256,12 @@ class _BranchMapViewState extends State<BranchMapView> {
                           _showBranchLog(path, branch);
                         }
                       },
+                      onAiPressed: widget.onAiChatForBranch == null
+                          ? null
+                          : () => widget.onAiChatForBranch!(path),
+                      onCheckoutPressed: widget.onCheckoutBranch == null
+                          ? null
+                          : () => widget.onCheckoutBranch!(path),
                     );
                   },
                 ),
@@ -276,7 +292,7 @@ class _BranchMapViewState extends State<BranchMapView> {
                 padding: const EdgeInsets.all(4),
                 child: SegmentedButton<int>(
                   showSelectedIcon: false,
-                  style: ButtonStyle(
+                  style: const ButtonStyle(
                     visualDensity: VisualDensity.compact,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
@@ -501,13 +517,16 @@ class BranchGraphModel {
   int orderFor(String path) => _orders[path] ?? 0;
 }
 
-class BranchMapNode extends StatelessWidget {
+class BranchMapNode extends StatefulWidget {
   const BranchMapNode({
+    super.key,
     required this.path,
     required this.node,
     required this.isRoot,
     required this.commitCount,
     required this.onTap,
+    this.onAiPressed,
+    this.onCheckoutPressed,
   });
 
   final String path;
@@ -515,101 +534,186 @@ class BranchMapNode extends StatelessWidget {
   final bool isRoot;
   final int commitCount;
   final VoidCallback onTap;
+  final VoidCallback? onAiPressed;
+  final VoidCallback? onCheckoutPressed;
+
+  @override
+  State<BranchMapNode> createState() => _BranchMapNodeState();
+}
+
+class _BranchMapNodeState extends State<BranchMapNode> {
+  bool _hoverCard = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final auraTokens = aura(context);
     final isDark = theme.brightness == Brightness.dark;
-    final fillColor = isRoot
+    final fillColor = widget.isRoot
         ? (isDark ? const Color(0xFF1E3A8A) : const Color(0xFFEFF6FF))
         : auraTokens.surfaceAlt;
-    final textColor = isRoot
+    final textColor = widget.isRoot
         ? (isDark ? Colors.white : const Color(0xFF1E3A8A))
         : auraTokens.text;
-    final borderColor = isRoot
+    final borderColor = widget.isRoot
         ? (isDark ? const Color(0xFF1D4ED8) : const Color(0xFF2563EB))
         : auraTokens.accent;
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Container(
-          width: 190,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: fillColor,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: borderColor, width: 1.4),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(isDark ? 0.10 : 0.06),
-                blurRadius: isDark ? 16 : 12,
-                offset: Offset(0, isDark ? 8 : 6),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    isRoot
-                        ? Icons.account_tree_rounded
-                        : Icons.call_split_rounded,
-                    size: 18,
-                    color: isRoot
-                        ? (isDark
-                            ? Colors.white
-                            : theme.colorScheme.primary)
-                        : theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      mapBranchName(path),
-                      maxLines: 1,
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hoverCard = true),
+      onExit: (_) => setState(() => _hoverCard = false),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: widget.onTap,
+              borderRadius: BorderRadius.circular(5),
+              child: Container(
+                width: 190,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: fillColor,
+                  borderRadius: BorderRadius.circular(5),
+                  border: Border.all(color: borderColor, width: 1.4),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(isDark ? 0.10 : 0.06),
+                      blurRadius: isDark ? 16 : 12,
+                      offset: Offset(0, isDark ? 8 : 6),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          widget.isRoot
+                              ? Icons.account_tree_rounded
+                              : Icons.call_split_rounded,
+                          size: 18,
+                          color: widget.isRoot
+                              ? (isDark
+                                  ? Colors.white
+                                  : theme.colorScheme.primary)
+                              : theme.colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            mapBranchName(widget.path),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              color: textColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      widget.path,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: textColor,
-                        fontWeight: FontWeight.w600,
+                      style: TextStyle(
+                        color: textColor.withOpacity(widget.isRoot ? 0.78 : 0.58),
+                        fontSize: 11,
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                path,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: textColor.withOpacity(isRoot ? 0.78 : 0.58),
-                  fontSize: 11,
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        MapNodeChip(
+                          text:
+                              'origin r${widget.node?.originRev?.toString() ?? '-'}',
+                          isRoot: widget.isRoot,
+                        ),
+                        MapNodeChip(
+                          text: '${widget.commitCount} commits',
+                          isRoot: widget.isRoot,
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  MapNodeChip(
-                    text: 'origin r${node?.originRev?.toString() ?? '-'}',
-                    isRoot: isRoot,
-                  ),
-                  MapNodeChip(
-                    text: '$commitCount commits',
-                    isRoot: isRoot,
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
-        ),
+          if (_hoverCard && widget.onCheckoutPressed != null)
+            Positioned(
+              top: 2,
+              right: widget.onAiPressed != null ? 36 : 2,
+              child: Material(
+                color: Colors.transparent,
+                child: IconButton(
+                  tooltip: t(
+                    context,
+                    'Checkout 此分支',
+                    'Checkout this branch',
+                  ),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    foregroundColor: auraTokens.textMuted,
+                    side: BorderSide(
+                      color: auraTokens.border.withOpacity(isDark ? 0.5 : 0.55),
+                    ),
+                    minimumSize: const Size(32, 30),
+                    maximumSize: const Size(36, 30),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  padding: EdgeInsets.zero,
+                  onPressed: widget.onCheckoutPressed,
+                  icon: Icon(
+                    Icons.download_for_offline_outlined,
+                    size: 16,
+                    color: auraTokens.accent,
+                  ),
+                ),
+              ),
+            ),
+          if (_hoverCard && widget.onAiPressed != null)
+            Positioned(
+              top: 2,
+              right: 2,
+              child: Material(
+                color: Colors.transparent,
+                child: IconButton(
+                  tooltip: t(
+                    context,
+                    '以此分支開啟 AI助理',
+                    'Open AI Assistant for this branch',
+                  ),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    foregroundColor: auraTokens.textMuted,
+                    side: BorderSide(
+                      color: auraTokens.border.withOpacity(isDark ? 0.5 : 0.55),
+                    ),
+                    minimumSize: const Size(32, 30),
+                    maximumSize: const Size(36, 30),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  padding: EdgeInsets.zero,
+                  onPressed: widget.onAiPressed,
+                  icon: Icon(
+                    Icons.auto_awesome_outlined,
+                    size: 16,
+                    color: auraTokens.accent,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -676,7 +780,7 @@ class BranchMapTitle extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: a.surface.withOpacity(fillOpacity),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(5),
         border: Border.all(color: a.border.withOpacity(borderOpacity)),
         boxShadow: [
           BoxShadow(

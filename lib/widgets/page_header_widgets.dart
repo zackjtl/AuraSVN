@@ -25,45 +25,15 @@ class AuraBackPageHeader extends StatelessWidget {
     final a = aura(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final pillBg = isDark
-        ? const Color(0xFFE2E8F0).withOpacity(0.9)
-        : Color.alphaBlend(Colors.white.withOpacity(0.92), a.surfaceSoft);
-    final pillFg = isDark ? const Color(0xFF0F172A) : a.text;
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(0, 0, 0, 14),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Tooltip(
-            message: t(context, '返回主頁', 'Back to Home'),
-            child: Material(
-              color: pillBg,
-              borderRadius: BorderRadius.circular(999),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: onBack,
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.arrow_back_rounded, size: 18, color: pillFg),
-                      const SizedBox(width: 6),
-                      Text(
-                        t(context, '返回', 'Return'),
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: pillFg,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+          OutlinedButton.icon(
+            onPressed: onBack,
+            icon: const Icon(Icons.arrow_back_rounded),
+            label: Text(t(context, '返回', 'Back')),
           ),
           const SizedBox(width: 18),
           Expanded(

@@ -404,12 +404,12 @@ def generate_project_report(payload, progress=None):
         prompt_related_commits=prompt_related_commits,
         branch_notes=branch_notes,
     )
-    emit(f"送出 Ollama 請求，model={model}，等待模型回應")
+    emit(f"送出 LLM 請求，model={model}，等待模型回應")
     api_key_for_chat = _ollama_api_key_from_client_payload(payload)
     report = call_ollama_chat(
         ollama_base_url, model, prompt, api_key_for_request=api_key_for_chat
     )
-    emit(f"Ollama 已回應，報告長度 {len(report)} 字元")
+    emit(f"LLM 已回應，報告長度 {len(report)} 字元")
     emit("儲存報告 Markdown 與 history index")
     report_entry = save_project_report(
         notes_root,
@@ -629,9 +629,9 @@ def test_ollama_settings(payload):
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
         detail = body.strip() or exc.reason
-        raise RuntimeError(f"Ollama request failed: HTTP {exc.code} {detail}") from exc
+        raise RuntimeError(f"LLM request failed: HTTP {exc.code} {detail}") from exc
     except urllib.error.URLError as exc:
-        raise RuntimeError(f"Ollama request failed: {exc}") from exc
+        raise RuntimeError(f"LLM request failed: {exc}") from exc
 
     content = decoded.get("message", {}).get("content", "").strip()
     preview = content[:200] if content else "(empty reply)"
@@ -671,9 +671,9 @@ def call_ollama_chat(base_url, model, prompt, *, api_key_for_request=None):
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
         detail = body.strip() or exc.reason
-        raise RuntimeError(f"Ollama request failed: HTTP {exc.code} {detail}") from exc
+        raise RuntimeError(f"LLM request failed: HTTP {exc.code} {detail}") from exc
     except urllib.error.URLError as exc:
-        raise RuntimeError(f"Ollama request failed: {exc}") from exc
+        raise RuntimeError(f"LLM request failed: {exc}") from exc
     return decoded.get("message", {}).get("content", "").strip()
 
 

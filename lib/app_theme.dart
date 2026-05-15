@@ -216,6 +216,29 @@ ThemeData buildAuraThemeData(String appearanceThemeCode) {
       labelStyle: TextStyle(color: colors.text),
       secondaryLabelStyle: TextStyle(color: colors.text),
     ),
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: ButtonStyle(
+        backgroundColor: MaterialStateProperty.resolveWith((states) {
+          if (states.contains(MaterialState.selected)) {
+            return colors.accent.withOpacity(night ? 0.16 : 0.12);
+          }
+          return Colors.transparent;
+        }),
+        foregroundColor: MaterialStateProperty.resolveWith((states) {
+          if (states.contains(MaterialState.selected)) {
+            return colors.accent;
+          }
+          return colors.textMuted;
+        }),
+        iconColor: MaterialStateProperty.resolveWith((states) {
+          if (states.contains(MaterialState.selected)) {
+            return colors.accent;
+          }
+          return colors.textMuted;
+        }),
+        side: MaterialStateProperty.all(BorderSide(color: colors.border)),
+      ),
+    ),
     dividerColor: colors.border,
   );
 }

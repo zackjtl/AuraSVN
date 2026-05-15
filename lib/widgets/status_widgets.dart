@@ -205,16 +205,14 @@ class BackendStatusCard extends StatelessWidget {
       child: Tooltip(
         message:
             '$status\n\n${t(context, '點擊可重新檢查或啟動本地後端。', 'Click to recheck or start the local backend.')}',
-        child: SizedBox(
+        child: Container(
           width: double.infinity,
-          height: 48,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: dashboardStatStripDecoration(
-              context,
-              accentBorder: accentBorder,
-            ),
-            child: Row(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: dashboardStatStripDecoration(
+            context,
+            accentBorder: accentBorder,
+          ),
+          child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Icon(style.icon, color: style.color, size: 19),
@@ -252,7 +250,6 @@ class BackendStatusCard extends StatelessWidget {
             ),
           ),
         ),
-      ),
     );
   }
 }

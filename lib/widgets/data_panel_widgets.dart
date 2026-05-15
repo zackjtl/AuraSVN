@@ -15,13 +15,16 @@ class DataPanelTopLeakDivider extends StatelessWidget {
   const DataPanelTopLeakDivider();
 
   /// 漸層向下延伸，拉長羽化；整體亮度靠低 alpha 壓低。
-  static const double _glowExtent = 64;
+  static const double _glowExtent = 16;
+
+  /// 下方 [TopologyCard]／[BranchMapView] 上移與此區重疊的像素，縮小羽化下方空白。
+  static const double topologyPullUpOverlap = 50;
 
   @override
   Widget build(BuildContext context) {
     final line = Color.alphaBlend(
       cyberAccent.withOpacity(0.11),
-      cyberMainPanel,
+      cyberBase,
     );
     return SizedBox(
       height: 1 + _glowExtent,
@@ -39,25 +42,25 @@ class DataPanelTopLeakDivider extends StatelessWidget {
                   colors: [
                     Color.alphaBlend(
                       cyberAccent.withOpacity(0.038),
-                      cyberMainPanel,
+                      cyberBase,
                     ),
                     Color.alphaBlend(
                       cyberAccent.withOpacity(0.022),
-                      cyberMainPanel,
+                      cyberBase,
                     ),
                     Color.alphaBlend(
                       cyberAccent.withOpacity(0.012),
-                      cyberMainPanel,
+                      cyberBase,
                     ),
                     Color.alphaBlend(
                       cyberAccent.withOpacity(0.006),
-                      cyberMainPanel,
+                      cyberBase,
                     ),
                     Color.alphaBlend(
                       cyberAccent.withOpacity(0.002),
-                      cyberMainPanel,
+                      cyberBase,
                     ),
-                    cyberMainPanel,
+                    cyberBase,
                   ],
                 ),
               ),
@@ -69,11 +72,14 @@ class DataPanelTopLeakDivider extends StatelessWidget {
   }
 }
 
-/// 白天：頂部細邊線 + 向下羽化至 [AuraThemeColors.surfaceAlt]，與 [TopologyCard] 底色銜接並與上方 metrics 區分開。
+/// 白天：頂部細邊線 + 向下羽化至 [AuraThemeColors.surfaceAlt]；[TopologyCard] 為透明底讓漸層透出。
 class DataPanelTopFeatherDividerLight extends StatelessWidget {
   const DataPanelTopFeatherDividerLight({super.key});
 
-  static const double _glowExtent = 56;
+  static const double _glowExtent = 14;
+
+  /// 與 [DataPanelTopLeakDivider.topologyPullUpOverlap] 相同用途（亮色主題）。
+  static const double topologyPullUpOverlap = 42;
 
   @override
   Widget build(BuildContext context) {
@@ -122,9 +128,10 @@ class DataPanel extends StatelessWidget {
     required this.onCheckBackend,
     required this.onStartBackend,
     required this.onVisualMapChanged,
-    required this.onAiAnalysisPressed,
-    required this.onAiHistoryPressed,
     required this.onAiChatPressed,
+    this.onCheckoutPressed,
+    this.onCheckoutBranch,
+    this.onAiChatForBranch,
     required this.onBranchSelected,
     this.onBranchMapOrientationChanged,
   });
@@ -139,9 +146,12 @@ class DataPanel extends StatelessWidget {
   final Future<void> Function() onCheckBackend;
   final Future<void> Function() onStartBackend;
   final ValueChanged<bool> onVisualMapChanged;
-  final VoidCallback onAiAnalysisPressed;
-  final VoidCallback onAiHistoryPressed;
   final VoidCallback onAiChatPressed;
+  final VoidCallback? onCheckoutPressed;
+  /// 從分支／地圖節點開啟 Checkout 時帶入該分支路徑（組合 repo URL）；為 null 時不顯示按鈕。
+  final ValueChanged<String>? onCheckoutBranch;
+  /// 從分支卡片開啟 AI 時帶入該分支路徑；為 null 時不顯示卡片上的 AI 捷徑。
+  final ValueChanged<String>? onAiChatForBranch;
   final ValueChanged<String> onBranchSelected;
   final ValueChanged<int>? onBranchMapOrientationChanged;
 
@@ -158,7 +168,7 @@ class DataPanel extends StatelessWidget {
         isDark
             ? DecoratedBox(
                 decoration: const BoxDecoration(
-                  color: cyberMainPanel,
+                  color: cyberBase,
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(24),
@@ -172,19 +182,45 @@ class DataPanel extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  repository.name,
-                                  style: GoogleFonts.inter(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: -0.2,
-                                    color: stitchPrimaryFixed,
-                                  ),
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      repository.name,
+                                      style: GoogleFonts.inter(
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: -0.2,
+                                        color: stitchPrimaryFixed,
+                                      ),
+                                    ),
+                                    if (latest != null) ...[
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: auraTokens.accent
+                                              .withOpacity(0.18),
+                                          borderRadius:
+                                              BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          'r${latest.revision}',
+                                          style: GoogleFonts.inter(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: auraTokens.accent,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                                 Text(
                                   repository.url,
                                   style: GoogleFonts.inter(
-                                    fontSize: 14,
+                                    fontSize: 12,
                                     fontWeight: FontWeight.w400,
                                     color: auraTokens.textMuted,
                                     height: 1.35,
@@ -200,51 +236,22 @@ class DataPanel extends StatelessWidget {
                             alignment: WrapAlignment.end,
                             crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
-                              if (latest != null)
-                                Chip(
-                                  avatar: const Icon(Icons.history_rounded,
-                                      size: 18),
-                                  label:
-                                      Text('Latest r${latest.revision}'),
+                              if (onCheckoutPressed != null)
+                                OutlinedButton.icon(
+                                  onPressed: onCheckoutPressed,
+                                  icon: const Icon(Icons.download_for_offline_rounded),
+                                  label: Text(t(context, 'Checkout', 'Checkout')),
                                 ),
                               FilledButton.icon(
-                                onPressed: onAiAnalysisPressed,
-                                icon: const Icon(Icons.auto_awesome_rounded),
-                                label: Text(t(context, 'AI 專案分析',
-                                    'AI Project Analysis')),
-                              ),
-                              OutlinedButton.icon(
-                                onPressed: onAiHistoryPressed,
-                                icon: const Icon(Icons.history_edu_rounded),
-                                label: Text(t(
-                                  context,
-                                  '瀏覽歷史AI分析',
-                                  'Browse AI Analysis History',
-                                )),
-                              ),
-                              OutlinedButton.icon(
                                 onPressed: onAiChatPressed,
-                                icon: const Icon(Icons.chat_bubble_rounded),
+                                icon: const Icon(Icons.auto_awesome_rounded),
                                 label: Text(t(
                                   context,
-                                  'AI 對話助理',
-                                  'AI Chat Assistant',
+                                  'AI助理',
+                                  'AI Assistant',
                                 )),
                               ),
                               SegmentedButton<bool>(
-                                style: ButtonStyle(
-                                  backgroundColor:
-                                      MaterialStateProperty.resolveWith(
-                                          (states) {
-                                    if (states.contains(
-                                            MaterialState.selected) &&
-                                        Theme.of(context).brightness ==
-                                            Brightness.dark) {
-                                      return const Color(0xFF17233F);
-                                    }
-                                    return null;
-                                  }),
-                                ),
                                 segments: const [
                                   ButtonSegment(
                                     value: false,
@@ -354,16 +361,44 @@ class DataPanel extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    repository.name,
-                                    style: theme.textTheme.headlineSmall
-                                        ?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        repository.name,
+                                        style: theme.textTheme.headlineSmall
+                                            ?.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      if (latest != null) ...[
+                                        const SizedBox(width: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: aura(context)
+                                                .accent
+                                                .withOpacity(0.15),
+                                            borderRadius:
+                                                BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            'r${latest.revision}',
+                                            style: theme.textTheme.labelSmall
+                                                ?.copyWith(
+                                              fontWeight: FontWeight.w600,
+                                              color: aura(context).accent,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
                                   ),
                                   Text(
                                     repository.url,
-                                    style: theme.textTheme.bodyMedium
+                                    style: theme.textTheme.bodySmall
                                         ?.copyWith(
                                       color: aura(context).textMuted,
                                     ),
@@ -378,34 +413,19 @@ class DataPanel extends StatelessWidget {
                               alignment: WrapAlignment.end,
                               crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
-                                if (latest != null)
-                                  Chip(
-                                    avatar: const Icon(Icons.history_rounded,
-                                        size: 18),
-                                    label: Text('Latest r${latest.revision}'),
+                                if (onCheckoutPressed != null)
+                                  OutlinedButton.icon(
+                                    onPressed: onCheckoutPressed,
+                                    icon: const Icon(Icons.download_for_offline_rounded),
+                                    label: Text(t(context, 'Checkout', 'Checkout')),
                                   ),
                                 FilledButton.icon(
-                                  onPressed: onAiAnalysisPressed,
-                                  icon: const Icon(Icons.auto_awesome_rounded),
-                                  label: Text(t(context, 'AI 專案分析',
-                                      'AI Project Analysis')),
-                                ),
-                                OutlinedButton.icon(
-                                  onPressed: onAiHistoryPressed,
-                                  icon: const Icon(Icons.history_edu_rounded),
-                                  label: Text(t(
-                                    context,
-                                    '瀏覽歷史AI分析',
-                                    'Browse AI Analysis History',
-                                  )),
-                                ),
-                                OutlinedButton.icon(
                                   onPressed: onAiChatPressed,
-                                  icon: const Icon(Icons.chat_bubble_rounded),
+                                  icon: const Icon(Icons.auto_awesome_rounded),
                                   label: Text(t(
                                     context,
-                                    'AI 對話助理',
-                                    'AI Chat Assistant',
+                                    'AI助理',
+                                    'AI Assistant',
                                   )),
                                 ),
                                 SegmentedButton<bool>(
@@ -524,12 +544,16 @@ class DataPanel extends StatelessWidget {
                       data: data,
                       settings: settings,
                       onBranchSelected: onBranchSelected,
+                      onAiChatForBranch: onAiChatForBranch,
+                      onCheckoutBranch: onCheckoutBranch,
                       onBranchMapOrientationChanged:
                           onBranchMapOrientationChanged,
                     )
                   : TopologyCard(
                       data: data,
                       onBranchSelected: onBranchSelected,
+                      onAiChatForBranch: onAiChatForBranch,
+                      onCheckoutBranch: onCheckoutBranch,
                     ),
         ),
       ],
